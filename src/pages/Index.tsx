@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useMondayPatients } from "@/hooks/useMondayPatients";
 import type { Patient } from "@/lib/workflow";
 import { StediPanel } from "@/components/dashboard/StediPanel";
-import { InsurancePanel } from "@/components/dashboard/InsurancePanel";
 import { DoctorPanel } from "@/components/dashboard/DoctorPanel";
 import { ServingPanel } from "@/components/dashboard/ServingPanel";
 import { PatientsSidebar } from "@/components/dashboard/PatientsSidebar";
@@ -80,19 +79,14 @@ const Index = () => {
                   <PatientProfileCard patient={selected} />
 
                   <Tabs defaultValue="stedi" className="space-y-5">
-                    <TabsList className="grid w-full max-w-lg grid-cols-4">
+                    <TabsList className="grid w-full max-w-sm grid-cols-3 mx-auto">
                       <TabsTrigger value="stedi">Stedi</TabsTrigger>
-                      <TabsTrigger value="insurance">Insurance</TabsTrigger>
                       <TabsTrigger value="doctor">Doctor</TabsTrigger>
                       <TabsTrigger value="serving">Serving</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="stedi" className="mt-0">
-                      <StediPanel patient={selected} onRefresh={refetch} />
-                    </TabsContent>
-
-                    <TabsContent value="insurance" className="mt-0">
-                      <InsurancePanel patient={selected} onUpdate={handleUpdate} />
+                      <StediPanel patient={selected} onRefresh={refetch} onUpdate={handleUpdate} />
                     </TabsContent>
 
                     <TabsContent value="doctor" className="mt-0">
