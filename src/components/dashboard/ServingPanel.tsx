@@ -52,12 +52,12 @@ function StatusSelect({ value, config, onChange, hint }: {
 function crossSellHint(crossSellStatus: string, primaryIns: string): string | null {
   const reason = crossSellReason(primaryIns);
   if (crossSellStatus === "Cross-Sell" && reason === "eligible") {
-    return `${primaryIns} is a non-Medicaid plan, so this patient is eligible for CGM cross-sell`;
+    return "Primary insurance is a non-Medicaid plan, so this patient is eligible for CGM cross-sell";
   }
   if (crossSellStatus === "Couldn't Cross-Sell") {
-    if (reason === "medicaid") return `${primaryIns} is a Medicaid plan`;
-    if (reason === "united") return `${primaryIns} is United, so we choose not to cross-sell United patients`;
-    if (reason === "cigna") return `${primaryIns} is Cigna, so we choose not to cross-sell Cigna patients`;
+    if (reason === "medicaid") return "Primary insurance is a Medicaid plan";
+    if (reason === "united") return "Primary insurance is United, so we choose not to cross-sell United patients";
+    if (reason === "cigna") return "Primary insurance is Cigna, so we choose not to cross-sell Cigna patients";
   }
   return null;
 }
@@ -79,7 +79,7 @@ export function ServingPanel({ patient, onUpdate, onNext }: Props) {
       });
     } else {
       onUpdate({
-        cgmCrossSell: "Couldn\u2019t Cross-Sell",
+        cgmCrossSell: "Couldn't Cross-Sell",
         cgmType: "Not Serving",
         cgmCoveragePath: "Not Serving",
       });
@@ -96,7 +96,18 @@ export function ServingPanel({ patient, onUpdate, onNext }: Props) {
   }, [crossSellStatus, requestType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isCrossSellEligible = crossSellStatus === "Cross-Sell";
+  const isCrossSellBlocked = crossSellStatus === "Couldn't Cross-Sell";
   const xsellHint = crossSellHint(crossSellStatus, primaryIns);
+  const cgmTypeHint = isCrossSellEligible
+    ? "All cross-sells default to Dexcom G7"
+    : isCrossSellBlocked
+      ? "Not cross-selling"
+      : undefined;
+  const cgmCoveragePathHint = isCrossSellEligible
+    ? "All cross-sells are insulin injecting"
+    : isCrossSellBlocked
+      ? "Not cross-selling"
+      : undefined;
 
   return (
     <div className="space-y-5">
@@ -158,7 +169,7 @@ export function ServingPanel({ patient, onUpdate, onNext }: Props) {
                 className={
                   crossSellStatus === "Cross-Sell"
                     ? "border-green-400 bg-green-50 text-green-700"
-                    : crossSellStatus === "Couldn\u2019t Cross-Sell"
+                    : crossSellStatus === "Couldn't Cross-Sell"
                       ? "border-red-400 bg-red-50 text-red-700"
                       : crossSellStatus === "Already Serving CGM"
                         ? "border-blue-400 bg-blue-50 text-blue-700"
@@ -166,7 +177,7 @@ export function ServingPanel({ patient, onUpdate, onNext }: Props) {
                 }
               >
                 {crossSellStatus === "Cross-Sell" && <CheckCircle2 className="h-3 w-3 mr-1" />}
-                {crossSellStatus === "Couldn\u2019t Cross-Sell" && <XCircle className="h-3 w-3 mr-1" />}
+                {crossSellStatus === "Couldn't Cross-Sell" && <XCircle className="h-3 w-3 mr-1" />}
                 {crossSellStatus === "Evaluate" && <AlertTriangle className="h-3 w-3 mr-1" />}
                 {crossSellStatus}
               </Badge>
@@ -218,7 +229,7 @@ export function ServingPanel({ patient, onUpdate, onNext }: Props) {
               value={patient.cgmType}
               config={{ field: "cgmType", label: "CGM Type", indexMap: CGM_TYPE_INDEX }}
               onChange={(v) => onUpdate({ cgmType: v })}
-              hint={isCrossSellEligible ? "All cross-sells default to Dexcom G7" : undefined}
+              hint={cgmTypeHint}
             />
           </div>
         </CardContent>
@@ -240,7 +251,7 @@ export function ServingPanel({ patient, onUpdate, onNext }: Props) {
               value={patient.cgmCoveragePath}
               config={{ field: "cgmCoveragePath", label: "CGM Coverage Path", indexMap: CGM_COVERAGE_PATH_INDEX }}
               onChange={(v) => onUpdate({ cgmCoveragePath: v })}
-              hint={isCrossSellEligible ? "All cross-sells are insulin injecting" : undefined}
+              hint={cgmCoveragePathHint}
             />
           </div>
         </CardContent>

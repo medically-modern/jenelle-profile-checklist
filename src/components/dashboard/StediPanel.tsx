@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { triggerStediRun, writePatientProfile, verifyProfileWritten } from "@/lib/mondayWrite";
 import {
   GENERAL_INSURANCE_INDEX,
@@ -97,6 +98,7 @@ function ResultRow({ label, value, isError }: { label: string; value: string; is
 export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
   const [running, setRunning] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [costSharingMode, setCostSharingMode] = useState<"individual" | "family">("individual");
 
   // Snapshot of what we believe is currently in Monday for the profile fields.
   // We track patient.id alongside it so we can re-baseline synchronously
@@ -345,58 +347,82 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
           {/* Cost Sharing section */}
           <Card className="shadow-card">
             <CardHeader className="pb-3">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">Step 2</p>
-              <CardTitle className="text-base">Verify Cost Sharing Info</CardTitle>
-              <p className="text-xs text-muted-foreground">
-                Edit the working values below. They default to the individual amounts — adjust if family values are more relevant.
-              </p>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">Step 2</p>
+                  <CardTitle className="text-base">Verify Cost Sharing Info</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Defaults pulled from {costSharingMode === "family" ? "family" : "individual"} amounts. All values are editable.
+                  </p>
+                </div>
+                <ToggleGroup
+                  type="single"
+                  value={costSharingMode}
+                  onValueChange={(v) => v && setCostSharingMode(v as "individual" | "family")}
+                  size="sm"
+                  variant="outline"
+                  className="self-start"
+                >
+                  <ToggleGroupItem value="individual" className="h-8 px-3 text-xs">Use Individual</ToggleGroupItem>
+                  <ToggleGroupItem value="family" className="h-8 px-3 text-xs">Use Family</ToggleGroupItem>
+                </ToggleGroup>
+              </div>
             </CardHeader>
             <CardContent className="space-y-5">
-              {/* Editable working values */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <Label>Co-insurance</Label>
-                  <PercentInput
-                    value={patient.workingCoinsurance || patient.stediCoinsurance}
-                    onChange={(v) => onUpdate({ workingCoinsurance: v })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Co-pay</Label>
-                  <CurrencyInput
-                    value={patient.stediCopay}
-                    readOnly
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Deductible</Label>
-                  <CurrencyInput
-                    value={patient.workingDeductible || patient.stediIndividualDeductible}
-                    onChange={(v) => onUpdate({ workingDeductible: v })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Deductible Remaining</Label>
-                  <CurrencyInput
-                    value={patient.workingDeductibleRemaining || patient.stediIndividualDeductibleRemaining}
-                    onChange={(v) => onUpdate({ workingDeductibleRemaining: v })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>OOP Max</Label>
-                  <CurrencyInput
-                    value={patient.workingOopMax || patient.stediIndividualOopMax}
-                    onChange={(v) => onUpdate({ workingOopMax: v })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>OOP Max Remaining</Label>
-                  <CurrencyInput
-                    value={patient.workingOopMaxRemaining || patient.stediIndividualOopMaxRemaining}
-                    onChange={(v) => onUpdate({ workingOopMaxRemaining: v })}
-                  />
-                </div>
-              </div>
+              {/* Editable working values — default source switches with the toggle */}
+              {(() => {
+                const isFamily = costSharingMode === "family";
+                const defaultDeductible = isFamily ? patient.stediFamilyDeductible : patient.stediIndividualDeductible;
+                const defaultDeductibleRem = isFamily ? patient.stediFamilyDeductibleRemaining : patient.stediIndividualDeductibleRemaining;
+                const defaultOopMax = isFamily ? patient.stediFamilyOopMax : patient.stediIndividualOopMax;
+                const defaultOopMaxRem = isFamily ? patient.stediFamilyOopMaxRemaining : patient.stediIndividualOopMaxRemaining;
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <Label>Co-insurance</Label>
+                      <PercentInput
+                        value={patient.workingCoinsurance || patient.stediCoinsurance}
+                        onChange={(v) => onUpdate({ workingCoinsurance: v })}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Co-pay</Label>
+                      <CurrencyInput
+                        value={patient.stediCopay}
+                        onChange={(v) => onUpdate({ stediCopay: v })}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Deductible</Label>
+                      <CurrencyInput
+                        value={patient.workingDeductible || defaultDeductible}
+                        onChange={(v) => onUpdate({ workingDeductible: v })}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Deductible Remaining</Label>
+                      <CurrencyInput
+                        value={patient.workingDeductibleRemaining || defaultDeductibleRem}
+                        onChange={(v) => onUpdate({ workingDeductibleRemaining: v })}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>OOP Max</Label>
+                      <CurrencyInput
+                        value={patient.workingOopMax || defaultOopMax}
+                        onChange={(v) => onUpdate({ workingOopMax: v })}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>OOP Max Remaining</Label>
+                      <CurrencyInput
+                        value={patient.workingOopMaxRemaining || defaultOopMaxRem}
+                        onChange={(v) => onUpdate({ workingOopMaxRemaining: v })}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Reference: Individual vs Family (read-only) */}
               <details className="group">
