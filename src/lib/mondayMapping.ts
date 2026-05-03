@@ -197,18 +197,18 @@ export function groupPrimaryInsuranceLabels(): { group: string; labels: string[]
   const labels = Object.keys(PRIMARY_INSURANCE_INDEX);
   const groups: Record<string, string[]> = {
     "Fidelis": [],
-    "Anthem BCBS": [],
+    "Anthem / BCBS": [],
     "United": [],
-    "BCBS (Other)": [],
     "Aetna": [],
     "Medicare / Medicaid": [],
     "Other": [],
   };
   for (const label of labels) {
     if (label.startsWith("Fidelis")) groups["Fidelis"].push(label);
-    else if (label.startsWith("Anthem BCBS")) groups["Anthem BCBS"].push(label);
+    else if (label.startsWith("Anthem BCBS") || label === "Horizon BCBS" || label.startsWith("BCBS ")) {
+      groups["Anthem / BCBS"].push(label);
+    }
     else if (label.startsWith("United")) groups["United"].push(label);
-    else if (label === "Horizon BCBS" || label.startsWith("BCBS ")) groups["BCBS (Other)"].push(label);
     else if (label.startsWith("Aetna")) groups["Aetna"].push(label);
     else if (label === "Medicare A&B" || label === "Medicaid") groups["Medicare / Medicaid"].push(label);
     else groups["Other"].push(label);

@@ -5,7 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { triggerStediRun, writePatientProfile, verifyProfileWritten } from "@/lib/mondayWrite";
 import {
@@ -15,7 +18,7 @@ import {
   groupPrimaryInsuranceLabels,
 } from "@/lib/mondayMapping";
 import { toast } from "sonner";
-import { Play, Loader2, AlertTriangle, CheckCircle2, Save, CheckCheck, ArrowRight } from "lucide-react";
+import { Play, Loader2, AlertTriangle, CheckCircle2, Save, CheckCheck, ArrowRight, ChevronsUpDown, Check } from "lucide-react";
 
 // Profile fields that need to be in Monday before Stedi can run.
 // Stedi reads from Monday — local edits must be synced first.
@@ -100,6 +103,7 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
   const [running, setRunning] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [costSharingMode, setCostSharingMode] = useState<"individual" | "family">("individual");
+  const [primaryOpen, setPrimaryOpen] = useState(false);
 
   // Snapshot of what we believe is currently in Monday for the profile fields.
   // We track patient.id alongside it so we can re-baseline synchronously
@@ -460,26 +464,49 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-1.5">
               <Label>Primary Insurance</Label>
-              <Select
-                value={patient.primaryInsurance || undefined}
-                onValueChange={(v) => onUpdate({ primaryInsurance: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select insurance…" />
-                </SelectTrigger>
-                <SelectContent className="max-h-[420px]">
-                  {groupPrimaryInsuranceLabels().map(({ group, labels }) => (
-                    <SelectGroup key={group}>
-                      <SelectLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                        {group}
-                      </SelectLabel>
-                      {labels.map((label) => (
-                        <SelectItem key={label} value={label}>{label}</SelectItem>
+              <Popover open={primaryOpen} onOpenChange={setPrimaryOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={primaryOpen}
+                    className="w-full justify-between font-normal"
+                  >
+                    {patient.primaryInsurance || <span className="text-muted-foreground">Select insurance…</span>}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0 w-[var(--radix-popover-trigger-width)] max-h-[420px]" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search insurance…" />
+                    <CommandList>
+                      <CommandEmpty>No insurance matches.</CommandEmpty>
+                      {groupPrimaryInsuranceLabels().map(({ group, labels }) => (
+                        <CommandGroup key={group} heading={group}>
+                          {labels.map((label) => (
+                            <CommandItem
+                              key={label}
+                              value={label}
+                              onSelect={(v) => {
+                                onUpdate({ primaryInsurance: v });
+                                setPrimaryOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  patient.primaryInsurance === label ? "opacity-100" : "opacity-0",
+                                )}
+                              />
+                              {label}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
                       ))}
-                    </SelectGroup>
-                  ))}
-                </SelectContent>
-              </Select>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="space-y-1.5">
