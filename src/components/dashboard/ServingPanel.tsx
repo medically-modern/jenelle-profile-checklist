@@ -128,7 +128,7 @@ export function ServingPanel({ patient, onUpdate }: Props) {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-end">
             <StatusSelect
               value={patient.cgmCrossSell}
               config={{ field: "cgmCrossSell", label: "Cross-Sell Status", indexMap: CGM_CROSS_SELL_INDEX }}
