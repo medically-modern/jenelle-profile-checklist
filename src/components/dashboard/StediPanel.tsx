@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Patient } from "@/lib/workflow";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -96,6 +96,7 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [costSharingMode, setCostSharingMode] = useState<"individual" | "family">("individual");
   const [primaryOpen, setPrimaryOpen] = useState(false);
+  const [pollingForStedi, setPollingForStedi] = useState(false);
 
   // Snapshot of what we believe is currently in Monday for the profile fields.
   // We track patient.id alongside it so we can re-baseline synchronously
@@ -126,16 +127,13 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
   );
   const canRunStedi = prereqsFilled && !profileDirty;
 
-  // Stedi failed = it ran but returned an error description with no plan name.
-  // (If both are populated, Stedi returned data with a warning — render normally.)
+  // Stedi populates fields one at a time across a few polls. To avoid
+  // showing a half-built results card, treat the response as "complete"
+  // only once a terminal signal lands: either the plan name (success) or
+  // the error description (failure).
+  const stediIsComplete = !!patient.stediPlanName || !!patient.stediErrorDescription;
   const isStediFailed = !!patient.stediErrorDescription && !patient.stediPlanName;
-  // hasStediData drives whether we render the *successful* result/cost/insurance
-  // sections. Failure is rendered separately below.
-  const hasStediData =
-    !isStediFailed &&
-    ALWAYS_FIELDS.some(
-      ({ key }) => key !== "stediErrorDescription" && !!(patient[key] as string),
-    );
+  const hasStediData = stediIsComplete && !isStediFailed;
 
   const handleFixProfile = async () => {
     setSyncing(true);
@@ -170,14 +168,20 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
 
   const handleRunStedi = async () => {
     setRunning(true);
+    setPollingForStedi(true);
     try {
       await triggerStediRun(patient.id);
       toast.success("Stedi eligibility check triggered");
-      // Poll for results
+      // Poll for results — fire 4 refreshes; the watcher effect below
+      // clears pollingForStedi as soon as a terminal signal arrives.
       setTimeout(onRefresh, 3000);
       setTimeout(onRefresh, 8000);
       setTimeout(onRefresh, 15000);
+      setTimeout(onRefresh, 25000);
+      // Hard timeout — never spin forever even if Monday is sleepy.
+      setTimeout(() => setPollingForStedi(false), 35000);
     } catch (e) {
+      setPollingForStedi(false);
       toast.error("Failed to trigger Stedi run", {
         description: e instanceof Error ? e.message : String(e),
       });
@@ -185,6 +189,11 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
       setRunning(false);
     }
   };
+
+  // Clear the polling banner the moment we see a terminal Stedi signal.
+  useEffect(() => {
+    if (pollingForStedi && stediIsComplete) setPollingForStedi(false);
+  }, [pollingForStedi, stediIsComplete]);
 
   const isActive = patient.stediEligibilityActive?.toLowerCase() === "yes";
 
@@ -295,6 +304,22 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
           </div>
         </CardContent>
       </Card>
+
+      {/* While Stedi is still populating, show a single waiting card so
+          eligibility results never appear field-by-field. */}
+      {pollingForStedi && !stediIsComplete && (
+        <Card className="shadow-card border-blue-200 bg-blue-50/40">
+          <CardContent className="pt-5 pb-4 flex items-center gap-3">
+            <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+            <div>
+              <p className="text-sm font-medium text-foreground">Running eligibility check…</p>
+              <p className="text-xs text-muted-foreground">
+                Results will appear here once Stedi finishes (usually 5–15 seconds).
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stedi failure — shown instead of Step 2 / Step 3 when Stedi errored. */}
       {isStediFailed && (
@@ -411,48 +436,59 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
                 const defaultOopMax = isFamily ? patient.stediFamilyOopMax : patient.stediIndividualOopMax;
                 const defaultOopMaxRem = isFamily ? patient.stediFamilyOopMaxRemaining : patient.stediIndividualOopMaxRemaining;
                 return (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>Co-insurance</Label>
-                      <PercentInput
-                        value={patient.workingCoinsurance || patient.stediCoinsurance}
-                        onChange={(v) => onUpdate({ workingCoinsurance: v })}
-                      />
+                  <div className="space-y-5">
+                    {/* Pair 1: Co-insurance + Co-pay */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label>Co-insurance</Label>
+                        <PercentInput
+                          value={patient.workingCoinsurance || patient.stediCoinsurance}
+                          onChange={(v) => onUpdate({ workingCoinsurance: v })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Co-pay</Label>
+                        <CurrencyInput
+                          value={patient.stediCopay}
+                          onChange={(v) => onUpdate({ stediCopay: v })}
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label>Co-pay</Label>
-                      <CurrencyInput
-                        value={patient.stediCopay}
-                        onChange={(v) => onUpdate({ stediCopay: v })}
-                      />
+
+                    {/* Pair 2: Deductible + Deductible Remaining */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label>Deductible</Label>
+                        <CurrencyInput
+                          value={patient.workingDeductible || defaultDeductible}
+                          onChange={(v) => onUpdate({ workingDeductible: v })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Deductible Remaining</Label>
+                        <CurrencyInput
+                          value={patient.workingDeductibleRemaining || defaultDeductibleRem}
+                          onChange={(v) => onUpdate({ workingDeductibleRemaining: v })}
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label>Deductible</Label>
-                      <CurrencyInput
-                        value={patient.workingDeductible || defaultDeductible}
-                        onChange={(v) => onUpdate({ workingDeductible: v })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Deductible Remaining</Label>
-                      <CurrencyInput
-                        value={patient.workingDeductibleRemaining || defaultDeductibleRem}
-                        onChange={(v) => onUpdate({ workingDeductibleRemaining: v })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>OOP Max</Label>
-                      <CurrencyInput
-                        value={patient.workingOopMax || defaultOopMax}
-                        onChange={(v) => onUpdate({ workingOopMax: v })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>OOP Max Remaining</Label>
-                      <CurrencyInput
-                        value={patient.workingOopMaxRemaining || defaultOopMaxRem}
-                        onChange={(v) => onUpdate({ workingOopMaxRemaining: v })}
-                      />
+
+                    {/* Pair 3: OOP Max + OOP Max Remaining */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label>OOP Max</Label>
+                        <CurrencyInput
+                          value={patient.workingOopMax || defaultOopMax}
+                          onChange={(v) => onUpdate({ workingOopMax: v })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>OOP Max Remaining</Label>
+                        <CurrencyInput
+                          value={patient.workingOopMaxRemaining || defaultOopMaxRem}
+                          onChange={(v) => onUpdate({ workingOopMaxRemaining: v })}
+                        />
+                      </div>
                     </div>
                   </div>
                 );
