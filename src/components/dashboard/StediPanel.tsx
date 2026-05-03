@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import type { Patient } from "@/lib/workflow";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -98,23 +98,24 @@ export function StediPanel({ patient, onRefresh, onUpdate }: Props) {
   const [syncing, setSyncing] = useState(false);
 
   // Snapshot of what we believe is currently in Monday for the profile fields.
-  // Updated when (a) we switch patients and (b) Fix Profile sync verifies.
-  const syncedSnapshotRef = useRef<ProfileSnapshot>(snapshotProfile(patient));
-
-  // Reset the snapshot whenever we switch to a different patient — at that
-  // point the patient prop reflects fresh Monday data (overlay-merged), so
-  // there are no pending edits by definition.
-  useEffect(() => {
-    syncedSnapshotRef.current = snapshotProfile(patient);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patient.id]);
+  // We track patient.id alongside it so we can re-baseline synchronously
+  // during render whenever the user switches patients — this avoids a one-
+  // frame flicker where the button briefly says "Fix Profile" before the
+  // useEffect would have run.
+  const syncedRef = useRef<{ id: string; snapshot: ProfileSnapshot }>({
+    id: patient.id,
+    snapshot: snapshotProfile(patient),
+  });
+  if (syncedRef.current.id !== patient.id) {
+    syncedRef.current = { id: patient.id, snapshot: snapshotProfile(patient) };
+  }
 
   const generalIns = patient.generalInsurance;
   const isMedicare = generalIns === "Medicare A&B";
   const isMedicaid = generalIns === "Medicaid";
 
   // Has the user edited any profile field since the last successful sync?
-  const profileDirty = !profilesEqual(snapshotProfile(patient), syncedSnapshotRef.current);
+  const profileDirty = !profilesEqual(snapshotProfile(patient), syncedRef.current.snapshot);
 
   // Prerequisites for Run Stedi button
   const prereqsFilled = !!(
@@ -141,7 +142,7 @@ export function StediPanel({ patient, onRefresh, onUpdate }: Props) {
       });
       if (result.ok) {
         // Mark these values as the new "known in Monday" baseline
-        syncedSnapshotRef.current = snapshotProfile(patient);
+        syncedRef.current = { id: patient.id, snapshot: snapshotProfile(patient) };
         onRefresh();
         toast.success("Profile saved to Monday — ready to run Stedi");
       } else {
@@ -183,7 +184,10 @@ export function StediPanel({ patient, onRefresh, onUpdate }: Props) {
       {/* Step A: Insurance Input + Run Stedi */}
       <Card className="shadow-card">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Insurance & Eligibility</CardTitle>
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">Step 1</p>
+            <CardTitle className="text-lg">Run Stedi Check</CardTitle>
+          </div>
         </CardHeader>
         <CardContent className="space-y-5">
           {/* General Insurance + Member IDs */}
@@ -229,8 +233,12 @@ export function StediPanel({ patient, onRefresh, onUpdate }: Props) {
             <Button
               onClick={handleFixProfile}
               disabled={syncing || !profileDirty}
-              variant="outline"
-              className="gap-2"
+              variant={profileDirty ? "default" : "outline"}
+              className={
+                profileDirty
+                  ? "gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-elevate"
+                  : "gap-2 opacity-70"
+              }
             >
               {syncing ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -336,7 +344,8 @@ export function StediPanel({ patient, onRefresh, onUpdate }: Props) {
           {/* Cost Sharing section */}
           <Card className="shadow-card">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Cost Sharing</CardTitle>
+              <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">Step 2</p>
+              <CardTitle className="text-base">Verify Cost Sharing Info</CardTitle>
               <p className="text-xs text-muted-foreground">
                 Edit the working values below. They default to the individual amounts — adjust if family values are more relevant.
               </p>
@@ -345,51 +354,45 @@ export function StediPanel({ patient, onRefresh, onUpdate }: Props) {
               {/* Editable working values */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
-                  <Label>Co-insurance %</Label>
-                  <Input
+                  <Label>Co-insurance</Label>
+                  <PercentInput
                     value={patient.workingCoinsurance || patient.stediCoinsurance}
-                    onChange={(e) => onUpdate({ workingCoinsurance: e.target.value })}
-                    placeholder="—"
+                    onChange={(v) => onUpdate({ workingCoinsurance: v })}
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Co-pay</Label>
-                  <Input
+                  <CurrencyInput
                     value={patient.stediCopay}
                     readOnly
-                    className="bg-muted/50"
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Deductible</Label>
-                  <Input
+                  <CurrencyInput
                     value={patient.workingDeductible || patient.stediIndividualDeductible}
-                    onChange={(e) => onUpdate({ workingDeductible: e.target.value })}
-                    placeholder="—"
+                    onChange={(v) => onUpdate({ workingDeductible: v })}
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Deductible Remaining</Label>
-                  <Input
+                  <CurrencyInput
                     value={patient.workingDeductibleRemaining || patient.stediIndividualDeductibleRemaining}
-                    onChange={(e) => onUpdate({ workingDeductibleRemaining: e.target.value })}
-                    placeholder="—"
+                    onChange={(v) => onUpdate({ workingDeductibleRemaining: v })}
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label>OOP Max</Label>
-                  <Input
+                  <CurrencyInput
                     value={patient.workingOopMax || patient.stediIndividualOopMax}
-                    onChange={(e) => onUpdate({ workingOopMax: e.target.value })}
-                    placeholder="—"
+                    onChange={(v) => onUpdate({ workingOopMax: v })}
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label>OOP Max Remaining</Label>
-                  <Input
+                  <CurrencyInput
                     value={patient.workingOopMaxRemaining || patient.stediIndividualOopMaxRemaining}
-                    onChange={(e) => onUpdate({ workingOopMaxRemaining: e.target.value })}
-                    placeholder="—"
+                    onChange={(v) => onUpdate({ workingOopMaxRemaining: v })}
                   />
                 </div>
               </div>
@@ -401,16 +404,16 @@ export function StediPanel({ patient, onRefresh, onUpdate }: Props) {
                 </summary>
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1 text-sm">
                   <div className="font-medium text-xs uppercase tracking-wider text-muted-foreground pt-2 col-span-full">Individual</div>
-                  <ResultRow label="Deductible" value={patient.stediIndividualDeductible} />
-                  <ResultRow label="Deductible Remaining" value={patient.stediIndividualDeductibleRemaining} />
-                  <ResultRow label="OOP Max" value={patient.stediIndividualOopMax} />
-                  <ResultRow label="OOP Max Remaining" value={patient.stediIndividualOopMaxRemaining} />
+                  <ResultRow label="Deductible" value={fmtCurrency(patient.stediIndividualDeductible)} />
+                  <ResultRow label="Deductible Remaining" value={fmtCurrency(patient.stediIndividualDeductibleRemaining)} />
+                  <ResultRow label="OOP Max" value={fmtCurrency(patient.stediIndividualOopMax)} />
+                  <ResultRow label="OOP Max Remaining" value={fmtCurrency(patient.stediIndividualOopMaxRemaining)} />
 
                   <div className="font-medium text-xs uppercase tracking-wider text-muted-foreground pt-2 col-span-full">Family</div>
-                  <ResultRow label="Deductible" value={patient.stediFamilyDeductible} />
-                  <ResultRow label="Deductible Remaining" value={patient.stediFamilyDeductibleRemaining} />
-                  <ResultRow label="OOP Max" value={patient.stediFamilyOopMax} />
-                  <ResultRow label="OOP Max Remaining" value={patient.stediFamilyOopMaxRemaining} />
+                  <ResultRow label="Deductible" value={fmtCurrency(patient.stediFamilyDeductible)} />
+                  <ResultRow label="Deductible Remaining" value={fmtCurrency(patient.stediFamilyDeductibleRemaining)} />
+                  <ResultRow label="OOP Max" value={fmtCurrency(patient.stediFamilyOopMax)} />
+                  <ResultRow label="OOP Max Remaining" value={fmtCurrency(patient.stediFamilyOopMaxRemaining)} />
                 </div>
               </details>
             </CardContent>
@@ -421,7 +424,8 @@ export function StediPanel({ patient, onRefresh, onUpdate }: Props) {
       {/* Step C: Primary + Secondary Insurance */}
       <Card className="shadow-card">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Primary &amp; Secondary Insurance</CardTitle>
+          <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">Step 3</p>
+          <CardTitle className="text-base">Enter Primary &amp; Secondary Insurance</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -461,6 +465,79 @@ export function StediPanel({ patient, onRefresh, onUpdate }: Props) {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ───────── Cost-sharing input helpers ─────────
+
+/** Format a numeric string as currency: "1250" → "$1,250", "2370.24" → "$2,370.24". */
+function fmtCurrency(raw: string): string {
+  if (!raw) return "";
+  const cleaned = raw.replace(/[^\d.\-]/g, "");
+  if (!cleaned || isNaN(Number(cleaned))) return raw;
+  const n = Number(cleaned);
+  // Show 2 decimals only if the value actually has fractional part
+  const opts: Intl.NumberFormatOptions = n % 1 === 0
+    ? { maximumFractionDigits: 0 }
+    : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  return "$" + n.toLocaleString("en-US", opts);
+}
+
+/** Currency input with $ prefix + thousands-separator on blur. */
+function CurrencyInput({
+  value, onChange, readOnly,
+}: { value: string; onChange?: (v: string) => void; readOnly?: boolean }) {
+  const [focused, setFocused] = useState(false);
+  const cleaned = (value ?? "").replace(/[^\d.\-]/g, "");
+  const display = focused
+    ? cleaned
+    : cleaned && !isNaN(Number(cleaned))
+      ? Number(cleaned).toLocaleString("en-US", {
+          minimumFractionDigits: cleaned.includes(".") ? 2 : 0,
+          maximumFractionDigits: 2,
+        })
+      : "";
+  return (
+    <div className="relative">
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">$</span>
+      <Input
+        className={`pl-7 ${readOnly ? "bg-muted/50" : ""}`}
+        value={display}
+        onChange={(e) => onChange?.(e.target.value.replace(/[$,\s]/g, ""))}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        placeholder="—"
+        readOnly={readOnly}
+      />
+    </div>
+  );
+}
+
+/** Percent input with % suffix. Decimal values (≤1) are displayed as ×100. */
+function PercentInput({
+  value, onChange,
+}: { value: string; onChange?: (v: string) => void }) {
+  const [focused, setFocused] = useState(false);
+  const cleaned = (value ?? "").replace(/[^\d.\-]/g, "");
+  const num = cleaned ? Number(cleaned) : NaN;
+  // Stedi often returns coinsurance as a decimal (0.5 = 50%); normalize for display.
+  const normalized = !isNaN(num) && num > 0 && num <= 1 ? num * 100 : num;
+  const display = focused
+    ? cleaned
+    : isNaN(normalized) ? "" :
+        Number.isInteger(normalized) ? String(normalized) : normalized.toFixed(1);
+  return (
+    <div className="relative">
+      <Input
+        className="pr-8"
+        value={display}
+        onChange={(e) => onChange?.(e.target.value.replace(/[%\s]/g, ""))}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        placeholder="—"
+      />
+      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">%</span>
     </div>
   );
 }
