@@ -49,7 +49,7 @@ export function UpdatesSheet({ itemId, patientName }: Props) {
 
     setPosting(true);
     try {
-      await createUpdate(itemId, text);
+      await createUpdate(itemId, text + "<br><br><i>-Profile Checklist</i>");
       setDraft("");
       toast.success("Update posted");
       // Refresh to show the new update
