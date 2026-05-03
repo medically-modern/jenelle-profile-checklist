@@ -67,23 +67,20 @@ export function ServingPanel({ patient, onUpdate, onNext }: Props) {
   const primaryIns = patient.primaryInsurance;
   const requestType = patient.requestType;
 
-  // Auto-evaluate cross-sell when primary insurance changes
+  // Re-derive cross-sell whenever primary insurance changes.
+  // Skip the patient if Janelle has manually marked Already Serving CGM —
+  // that's a fact about the patient, not insurance-derived, and shouldn't
+  // be overwritten on insurance edits.
   useEffect(() => {
-    if (crossSellStatus !== "Evaluate" || !primaryIns) return;
+    if (!primaryIns) return;
+    if (crossSellStatus === "Already Serving CGM") return;
+
     const eligible = canCrossSellCgm(primaryIns);
-    if (eligible) {
-      onUpdate({
-        cgmCrossSell: "Cross-Sell",
-        cgmType: "Dexcom G7",
-        cgmCoveragePath: "Insulin",  // All cross-sells default to Insulin path
-      });
-    } else {
-      onUpdate({
-        cgmCrossSell: "Couldn't Cross-Sell",
-        cgmType: "Not Serving",
-        cgmCoveragePath: "Not Serving",
-      });
-    }
+    onUpdate({
+      cgmCrossSell: eligible ? "Cross-Sell" : "Couldn't Cross-Sell",
+      cgmType: eligible ? "Dexcom G7" : "Not Serving",
+      cgmCoveragePath: eligible ? "Insulin" : "Not Serving",
+    });
   }, [primaryIns]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-derive Serving from cross-sell + request type

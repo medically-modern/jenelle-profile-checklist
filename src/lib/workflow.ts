@@ -160,3 +160,27 @@ export function hasValidZip(address: string): boolean {
   if (!address.trim()) return true; // empty is ok
   return extractZip(address) !== null;
 }
+
+/**
+ * Normalize a DOB to MM/DD/YYYY. Pads month and day to 2 digits.
+ * Accepts 2-digit year shorthand: <30 → 20xx, otherwise 19xx.
+ * Returns the input unchanged if it doesn't look like a date.
+ */
+export function normalizeDob(input: string): string {
+  const trimmed = (input ?? "").trim();
+  if (!trimmed) return "";
+  const parts = trimmed.split("/").map((s) => s.trim());
+  if (parts.length !== 3) return trimmed;
+  let [m, d, y] = parts;
+  if (!m || !d || !y || !/^\d+$/.test(m) || !/^\d+$/.test(d) || !/^\d+$/.test(y)) {
+    return trimmed;
+  }
+  m = m.padStart(2, "0");
+  d = d.padStart(2, "0");
+  if (y.length === 2) {
+    const yn = parseInt(y, 10);
+    y = yn < 30 ? `20${y}` : `19${y}`;
+  }
+  return `${m}/${d}/${y}`;
+}
+

@@ -184,3 +184,33 @@ export const ALREADY_IN_SYSTEM_INDEX: Record<string, number> = {
 export const MOVE_TO_ONBOARDING_INDEX: Record<string, number> = {
   "Already Serving": 0, "Advance to MN": 1, "Send Back To Referral": 2, "Need More Info.": 3,
 };
+
+/**
+ * Group Primary Insurance labels into carrier-based sections for the
+ * grouped dropdown on the Stedi tab. Empty groups are filtered out.
+ */
+export function groupPrimaryInsuranceLabels(): { group: string; labels: string[] }[] {
+  const labels = Object.keys(PRIMARY_INSURANCE_INDEX);
+  const groups: Record<string, string[]> = {
+    "Fidelis": [],
+    "Anthem BCBS": [],
+    "United": [],
+    "BCBS (Other)": [],
+    "Aetna": [],
+    "Medicare / Medicaid": [],
+    "Other": [],
+  };
+  for (const label of labels) {
+    if (label.startsWith("Fidelis")) groups["Fidelis"].push(label);
+    else if (label.startsWith("Anthem BCBS")) groups["Anthem BCBS"].push(label);
+    else if (label.startsWith("United")) groups["United"].push(label);
+    else if (label === "Horizon BCBS" || label.startsWith("BCBS ")) groups["BCBS (Other)"].push(label);
+    else if (label.startsWith("Aetna")) groups["Aetna"].push(label);
+    else if (label === "Medicare A&B" || label === "Medicaid") groups["Medicare / Medicaid"].push(label);
+    else groups["Other"].push(label);
+  }
+  return Object.entries(groups)
+    .filter(([, vals]) => vals.length > 0)
+    .map(([group, ls]) => ({ group, labels: ls.sort() }));
+}
+

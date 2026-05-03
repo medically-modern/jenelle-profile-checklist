@@ -1,44 +1,29 @@
-import { useState } from "react";
 import type { Patient } from "@/lib/workflow";
-import { formatPhone } from "@/lib/workflow";
+import { formatPhone, normalizeDob } from "@/lib/workflow";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import { CalendarDays, User, Phone, Mail, Heart, MapPin, AlertCircle } from "lucide-react";
-import { format, parse, isValid } from "date-fns";
 
 interface Props {
   patient: Patient;
   onUpdate: (patch: Partial<Patient>) => void;
 }
 
-/** Parse MM/DD/YYYY string to Date, or return undefined */
-function parseDob(dob: string): Date | undefined {
-  if (!dob) return undefined;
-  const d = parse(dob, "MM/dd/yyyy", new Date());
-  return isValid(d) ? d : undefined;
-}
-
 export function PatientProfileCard({ patient, onUpdate }: Props) {
   const alreadyInSystem = patient.alreadyInSystem?.toLowerCase();
-  const [calOpen, setCalOpen] = useState(false);
 
   const handlePhoneChange = (value: string) => {
     onUpdate({ ptPhone: formatPhone(value) });
   };
 
-  const handleCalendarSelect = (date: Date | undefined) => {
-    if (date) {
-      onUpdate({ dob: format(date, "MM/dd/yyyy") });
+  const handleDobBlur = () => {
+    const normalized = normalizeDob(patient.dob);
+    if (normalized !== patient.dob) {
+      onUpdate({ dob: normalized });
     }
-    setCalOpen(false);
   };
-
-  const dobDate = parseDob(patient.dob);
 
   return (
     <div className="rounded-xl bg-card border shadow-card p-5">
@@ -73,34 +58,19 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
           />
         </div>
 
-        {/* DOB — Calendar picker that outputs MM/DD/YYYY */}
+        {/* DOB — plain text input, MM/DD/YYYY. Auto-pads month and day on blur. */}
         <div className="space-y-1">
           <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <CalendarDays className="h-3.5 w-3.5" /> DOB
           </Label>
-          <Popover open={calOpen} onOpenChange={setCalOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className="w-full h-9 justify-start text-left font-normal px-3"
-              >
-                <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />
-                {patient.dob || <span className="text-muted-foreground">MM/DD/YYYY</span>}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={dobDate}
-                onSelect={handleCalendarSelect}
-                defaultMonth={dobDate || new Date(1990, 0)}
-                captionLayout="dropdown-buttons"
-                fromYear={1920}
-                toYear={new Date().getFullYear()}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
+          <Input
+            value={patient.dob}
+            onChange={(e) => onUpdate({ dob: e.target.value })}
+            onBlur={handleDobBlur}
+            placeholder="MM/DD/YYYY"
+            inputMode="numeric"
+            className="h-9"
+          />
         </div>
 
         {/* Phone */}

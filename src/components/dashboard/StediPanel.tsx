@@ -5,13 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { triggerStediRun, writePatientProfile, verifyProfileWritten } from "@/lib/mondayWrite";
 import {
   GENERAL_INSURANCE_INDEX,
   PRIMARY_INSURANCE_INDEX,
   SECONDARY_INSURANCE_INDEX,
+  groupPrimaryInsuranceLabels,
 } from "@/lib/mondayMapping";
 import { toast } from "sonner";
 import { Play, Loader2, AlertTriangle, CheckCircle2, Save, CheckCheck, ArrowRight } from "lucide-react";
@@ -466,9 +467,16 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
                 <SelectTrigger>
                   <SelectValue placeholder="Select insurance…" />
                 </SelectTrigger>
-                <SelectContent>
-                  {Object.keys(PRIMARY_INSURANCE_INDEX).map((label) => (
-                    <SelectItem key={label} value={label}>{label}</SelectItem>
+                <SelectContent className="max-h-[420px]">
+                  {groupPrimaryInsuranceLabels().map(({ group, labels }) => (
+                    <SelectGroup key={group}>
+                      <SelectLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                        {group}
+                      </SelectLabel>
+                      {labels.map((label) => (
+                        <SelectItem key={label} value={label}>{label}</SelectItem>
+                      ))}
+                    </SelectGroup>
                   ))}
                 </SelectContent>
               </Select>
