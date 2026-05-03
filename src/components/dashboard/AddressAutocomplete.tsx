@@ -111,19 +111,36 @@ async function loadGooglePlaces(): Promise<void> {
   }
 }
 
-/** Geocode an address string to lat/lng using the Maps Geocoder */
-async function geocodeAddress(address: string): Promise<{ lat: number; lng: number }> {
-  try {
-    const geocoder = new google.maps.Geocoder();
-    const result = await geocoder.geocode({ address });
-    if (result.results?.[0]?.geometry?.location) {
-      const loc = result.results[0].geometry.location;
-      return { lat: loc.lat(), lng: loc.lng() };
-    }
-  } catch (err) {
-    console.warn("Geocoding failed:", err);
-  }
-  return { lat: 0, lng: 0 };
+/**
+ * Build a full address from Place.addressComponents, guaranteeing the zip
+ * is always included. Falls back to formattedAddress if components are missing.
+ */
+function buildFullAddress(place: any): string {
+  // New Places API uses addressComponents (camelCase) with longText/shortText
+  const components: any[] = place.addressComponents || [];
+  if (components.length === 0) return place.formattedAddress || "";
+
+  const get = (type: string, short = false): string => {
+    const c = components.find((comp: any) =>
+      (comp.types || []).includes(type),
+    );
+    if (!c) return "";
+    return short ? (c.shortText || c.short_name || "") : (c.longText || c.long_name || "");
+  };
+
+  const streetNumber = get("street_number");
+  const route = get("route");
+  const city =
+    get("locality") ||
+    get("sublocality_level_1") ||
+    get("administrative_area_level_3");
+  const state = get("administrative_area_level_1", true); // short form: "NY"
+  const zip = get("postal_code");
+
+  const street = [streetNumber, route].filter(Boolean).join(" ");
+  const stateZip = [state, zip].filter(Boolean).join(" ");
+  const parts = [street, city, stateZip].filter(Boolean);
+  return parts.join(", ");
 }
 
 /** Try to reach the <input> inside the web component's shadow DOM */
@@ -183,20 +200,64 @@ export function AddressAutocomplete({ value, onChange, placeholder, className }:
       pac.style.width = "100%";
       injectAutocompleteStyles();
 
-      // Listen for place selection
+      // Listen for place selection — use Place object to extract components + zip
       for (const evtName of ["gmp-placeselect", "gmp-select"]) {
-        pac.addEventListener(evtName, () => {
-          setTimeout(async () => {
-            let addr = (pac as any).value || "";
+        pac.addEventListener(evtName, async (event: any) => {
+          try {
+            const place = event?.place;
+            let addr = "";
+            let lat = 0;
+            let lng = 0;
+
+            if (place && typeof place.fetchFields === "function") {
+              // New Places API: fetch address components + location from Place object
+              await place.fetchFields({
+                fields: ["addressComponents", "formattedAddress", "location"],
+              });
+              addr = buildFullAddress(place);
+              if (place.location) {
+                lat = place.location.lat();
+                lng = place.location.lng();
+              }
+            }
+
+            // Fallback: read the raw input value if Place object didn't yield an address
+            if (!addr) {
+              addr = (pac as any).value || "";
+            }
+
             if (!addr) return;
+
             addr = stripZipPlus4(addr);
+
             // Sync the cleaned value back into the input
             const inp = getShadowInput(pac);
             if (inp && inp.value !== addr) inp.value = addr;
-            const coords = await geocodeAddress(addr);
+
             lastEmittedRef.current = addr;
-            onChangeRef.current({ address: addr, lat: coords.lat, lng: coords.lng });
-          }, 50);
+            onChangeRef.current({ address: addr, lat, lng });
+          } catch (err) {
+            // If fetchFields fails, fall back to pac.value + geocoding
+            console.warn("Place fetchFields failed, falling back:", err);
+            let addr = stripZipPlus4((pac as any).value || "");
+            if (!addr) return;
+            const inp = getShadowInput(pac);
+            if (inp && inp.value !== addr) inp.value = addr;
+            try {
+              const geocoder = new google.maps.Geocoder();
+              const result = await geocoder.geocode({ address: addr });
+              const loc = result.results?.[0]?.geometry?.location;
+              lastEmittedRef.current = addr;
+              onChangeRef.current({
+                address: addr,
+                lat: loc ? loc.lat() : 0,
+                lng: loc ? loc.lng() : 0,
+              });
+            } catch {
+              lastEmittedRef.current = addr;
+              onChangeRef.current({ address: addr, lat: 0, lng: 0 });
+            }
+          }
         });
       }
 
