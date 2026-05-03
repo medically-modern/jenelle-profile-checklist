@@ -126,7 +126,16 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
   );
   const canRunStedi = prereqsFilled && !profileDirty;
 
-  const hasStediData = ALWAYS_FIELDS.some(({ key }) => !!(patient[key] as string));
+  // Stedi failed = it ran but returned an error description with no plan name.
+  // (If both are populated, Stedi returned data with a warning — render normally.)
+  const isStediFailed = !!patient.stediErrorDescription && !patient.stediPlanName;
+  // hasStediData drives whether we render the *successful* result/cost/insurance
+  // sections. Failure is rendered separately below.
+  const hasStediData =
+    !isStediFailed &&
+    ALWAYS_FIELDS.some(
+      ({ key }) => key !== "stediErrorDescription" && !!(patient[key] as string),
+    );
 
   const handleFixProfile = async () => {
     setSyncing(true);
@@ -275,6 +284,9 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
                 Fill in Name, DOB, General Insurance, and Member ID 1 first
               </p>
             )}
+            {isStediFailed && (
+              <Badge variant="destructive">Eligibility Check Failed</Badge>
+            )}
             {hasStediData && patient.stediEligibilityActive && (
               <Badge variant={isActive ? "default" : "destructive"} className={isActive ? "bg-green-600" : ""}>
                 {isActive ? "Active" : patient.stediEligibilityActive}
@@ -284,7 +296,32 @@ export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
         </CardContent>
       </Card>
 
-      {/* Step B: Stedi Results (only show if we have data) */}
+      {/* Stedi failure — shown instead of Step 2 / Step 3 when Stedi errored. */}
+      {isStediFailed && (
+        <Card className="shadow-card border-red-300">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base text-red-700 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" />
+                Eligibility Check Failed
+              </CardTitle>
+              <Badge variant="destructive">Failed</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
+              Reason from Stedi
+            </p>
+            <p className="text-sm text-red-700">{patient.stediErrorDescription}</p>
+            <p className="text-xs text-muted-foreground mt-3">
+              Fix the underlying input (often Name, DOB, or Member ID 1), click Fix Profile Before Stedi Check,
+              then Run Stedi Check again.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step B: Stedi Results (only show if Stedi succeeded) */}
       {hasStediData && (
         <>
           {/* Always-show results */}
