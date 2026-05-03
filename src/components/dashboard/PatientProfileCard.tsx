@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { UpdatesSheet } from "@/components/dashboard/UpdatesSheet";
 import { CalendarDays, User, Phone, Mail, Heart, MapPin, AlertCircle } from "lucide-react";
 
 interface Props {
@@ -30,19 +31,22 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
     <div className="rounded-xl bg-card border shadow-card p-5">
       <div className="flex items-center justify-between mb-4">
         <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Patient Profile</p>
-        {patient.alreadyInSystem && (
-          <Badge
-            variant="outline"
-            className={
-              alreadyInSystem === "yes"
-                ? "border-red-400 bg-red-50 text-red-700"
-                : "border-green-400 bg-green-50 text-green-700"
-            }
-          >
-            <AlertCircle className="h-3 w-3 mr-1" />
-            {alreadyInSystem === "yes" ? "Already In System" : "New Patient"}
-          </Badge>
-        )}
+        <div className="flex items-center gap-2">
+          <UpdatesSheet itemId={patient.id} patientName={patient.name} />
+          {patient.alreadyInSystem && (
+            <Badge
+              variant="outline"
+              className={
+                alreadyInSystem === "yes"
+                  ? "border-red-400 bg-red-50 text-red-700"
+                  : "border-green-400 bg-green-50 text-green-700"
+              }
+            >
+              <AlertCircle className="h-3 w-3 mr-1" />
+              {alreadyInSystem === "yes" ? "Already In System" : "New Patient"}
+            </Badge>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
