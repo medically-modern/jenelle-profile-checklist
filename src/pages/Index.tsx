@@ -1,18 +1,31 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useMondayPatients } from "@/hooks/useMondayPatients";
+import { fetchClinicLabels, createClinicLabel } from "@/lib/mondayApi";
+import { sendPatientToMonday } from "@/lib/mondayWrite";
 import type { Patient } from "@/lib/workflow";
+import { hasValidZip } from "@/lib/workflow";
 import { StediPanel } from "@/components/dashboard/StediPanel";
 import { DoctorPanel } from "@/components/dashboard/DoctorPanel";
 import { ServingPanel } from "@/components/dashboard/ServingPanel";
 import { PatientsSidebar } from "@/components/dashboard/PatientsSidebar";
 import { PatientProfileCard } from "@/components/dashboard/PatientProfileCard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { ClipboardCheck } from "lucide-react";
+import { ClipboardCheck, Send, AlertTriangle, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 const Index = () => {
-  const { patients, loading, error, refetch, updateLocal } = useMondayPatients();
+  const { patients, loading, error, refetch, updateLocal, clearOverlay } = useMondayPatients();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [clinicLabels, setClinicLabels] = useState<{ id: number; name: string }[]>([]);
+  const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
+
+  // Load clinic labels on mount
+  useEffect(() => {
+    fetchClinicLabels().then(setClinicLabels).catch(console.error);
+  }, []);
 
   useEffect(() => {
     if (!selectedId && patients.length > 0) setSelectedId(patients[0].id);
@@ -23,9 +36,57 @@ const Index = () => {
     [patients, selectedId],
   );
 
-  const handleUpdate = (patch: Partial<Patient>) => {
+  const handleUpdate = useCallback((patch: Partial<Patient>) => {
     if (!selected) return;
     updateLocal(selected.id, patch);
+  }, [selected, updateLocal]);
+
+  const handleClinicSelect = useCallback((id: number, name: string) => {
+    setSelectedClinicId(id);
+    if (selected) updateLocal(selected.id, { clinicName: name });
+  }, [selected, updateLocal]);
+
+  const handleClinicCreate = useCallback(async (name: string) => {
+    try {
+      const newId = await createClinicLabel(name);
+      setClinicLabels((prev) => [...prev, { id: newId, name }]);
+      setSelectedClinicId(newId);
+      if (selected) updateLocal(selected.id, { clinicName: name });
+      toast.success(`Clinic "${name}" added`);
+    } catch (e) {
+      toast.error("Failed to create clinic", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }, [selected, updateLocal]);
+
+  const handleSubmit = async (action: "advance" | "needsInfo") => {
+    if (!selected) return;
+
+    // Validate zip
+    if (selected.clinicAddress && !hasValidZip(selected.clinicAddress)) {
+      toast.error("Clinic address must include a valid 5-digit zip code");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await sendPatientToMonday(selected, action, selectedClinicId);
+      clearOverlay(selected.id);
+      toast.success(
+        action === "advance"
+          ? `${selected.name} advanced to MN`
+          : `${selected.name} marked as needs more info`,
+      );
+      // Refresh to pick up Monday-side state
+      setTimeout(refetch, 1500);
+    } catch (e) {
+      toast.error("Failed to submit", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -34,7 +95,10 @@ const Index = () => {
         <PatientsSidebar
           patients={patients}
           selectedId={selectedId}
-          onSelect={setSelectedId}
+          onSelect={(id) => {
+            setSelectedId(id);
+            setSelectedClinicId(null);
+          }}
           loading={loading}
           error={error}
           onRefresh={refetch}
@@ -53,7 +117,7 @@ const Index = () => {
                     Medically Modern · Profile Tool
                   </p>
                   <h1 className="text-xl font-semibold">
-                    {selected ? `${selected.name}` : "Profile Send Off"}
+                    {selected ? selected.name : "Profile Send Off"}
                   </h1>
                 </div>
               </div>
@@ -76,27 +140,62 @@ const Index = () => {
 
               {selected && (
                 <>
-                  <PatientProfileCard patient={selected} />
+                  <PatientProfileCard patient={selected} onUpdate={handleUpdate} />
 
                   <Tabs defaultValue="stedi" className="space-y-5">
-                    <TabsList className="grid w-full max-w-sm grid-cols-3 mx-auto">
-                      <TabsTrigger value="stedi">Stedi</TabsTrigger>
-                      <TabsTrigger value="doctor">Doctor</TabsTrigger>
-                      <TabsTrigger value="serving">Serving</TabsTrigger>
+                    <TabsList className="grid w-full max-w-md grid-cols-3 mx-auto">
+                      <TabsTrigger value="stedi">1. Stedi</TabsTrigger>
+                      <TabsTrigger value="serving">2. Serving</TabsTrigger>
+                      <TabsTrigger value="doctor">3. Doctor</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="stedi" className="mt-0">
                       <StediPanel patient={selected} onRefresh={refetch} onUpdate={handleUpdate} />
                     </TabsContent>
 
-                    <TabsContent value="doctor" className="mt-0">
-                      <DoctorPanel patient={selected} onUpdate={handleUpdate} />
-                    </TabsContent>
-
                     <TabsContent value="serving" className="mt-0">
                       <ServingPanel patient={selected} onUpdate={handleUpdate} />
                     </TabsContent>
+
+                    <TabsContent value="doctor" className="mt-0">
+                      <DoctorPanel
+                        patient={selected}
+                        onUpdate={handleUpdate}
+                        clinicLabels={clinicLabels}
+                        onClinicSelect={handleClinicSelect}
+                        onClinicCreate={handleClinicCreate}
+                      />
+                    </TabsContent>
                   </Tabs>
+
+                  {/* Submit Buttons */}
+                  <div className="rounded-xl bg-card border shadow-card p-5">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground">Ready to send off?</p>
+                        <p className="text-xs">All edits will be saved to Monday when you submit.</p>
+                      </div>
+                      <div className="flex gap-3">
+                        <Button
+                          variant="outline"
+                          onClick={() => handleSubmit("needsInfo")}
+                          disabled={submitting}
+                          className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+                        >
+                          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+                          Need More Info
+                        </Button>
+                        <Button
+                          onClick={() => handleSubmit("advance")}
+                          disabled={submitting}
+                          className="gap-2 bg-green-600 hover:bg-green-700 text-white shadow-elevate"
+                        >
+                          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                          Advance to MN
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </>
               )}
             </section>

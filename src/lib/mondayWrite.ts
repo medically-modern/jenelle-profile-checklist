@@ -1,50 +1,100 @@
 /**
- * Real-time write helpers — fire individual column mutations on user change.
+ * Batch write — all local edits are sent to Monday on submit.
+ * Only triggerStediRun fires immediately.
  */
-import { writeStatusIndex, writeText, writePhone, writeEmail, COL } from "./mondayApi";
+import {
+  writeStatusIndex, writeText, writePhone, writeEmail, writeNumber,
+  writeLocation, writeItemName, writeDropdownIds, COL,
+} from "./mondayApi";
+import type { Patient } from "./workflow";
+import {
+  PRIMARY_INSURANCE_INDEX, GENERAL_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX,
+  DOCTOR_STATUS_INDEX, CLINICALS_METHOD_INDEX, REFERRAL_TYPE_INDEX,
+  REFERRAL_SOURCE_INDEX, PUMP_TYPE_INDEX, CGM_TYPE_INDEX, REQUEST_TYPE_INDEX,
+  CGM_CROSS_SELL_INDEX, SERVING_INDEX, INSULIN_PUMP_COVERAGE_PATH_INDEX,
+  CGM_COVERAGE_PATH_INDEX, GENDER_INDEX, MOVE_TO_ONBOARDING_INDEX,
+} from "./mondayMapping";
 
-/**
- * Write a status column given the column key from COL, the label text,
- * and a label→index lookup map.
- */
-export async function writeStatus(
-  itemId: string,
-  columnId: string,
-  label: string,
-  indexMap: Record<string, number>,
-): Promise<void> {
-  const index = indexMap[label];
-  if (index === undefined) {
-    console.warn(`writeStatus: unknown label "${label}" for column ${columnId}`);
-    return;
-  }
-  await writeStatusIndex(itemId, columnId, index);
-}
-
-/**
- * Write a plain text column.
- */
-export async function writeTextField(itemId: string, columnId: string, value: string): Promise<void> {
-  await writeText(itemId, columnId, value);
-}
-
-/**
- * Write a phone column.
- */
-export async function writePhoneField(itemId: string, columnId: string, phone: string): Promise<void> {
-  await writePhone(itemId, columnId, phone);
-}
-
-/**
- * Write an email column.
- */
-export async function writeEmailField(itemId: string, columnId: string, email: string): Promise<void> {
-  await writeEmail(itemId, columnId, email);
-}
-
-/**
- * Trigger a Stedi eligibility run by setting the status to "Run" (index 1).
- */
+/** Trigger a Stedi eligibility run — the ONLY immediate write. */
 export async function triggerStediRun(itemId: string): Promise<void> {
   await writeStatusIndex(itemId, COL.runStediEligibility, 1);
+}
+
+// ── Helpers ──
+
+function statusTask(
+  itemId: string, colId: string, label: string, indexMap: Record<string, number>,
+): Promise<void> | null {
+  const idx = indexMap[label];
+  if (idx === undefined) return null;
+  return writeStatusIndex(itemId, colId, idx);
+}
+
+/**
+ * Send all patient data to Monday in one batch.
+ * @param p The local patient state to write
+ * @param onboardingAction "advance" or "needsInfo"
+ * @param clinicLabelId If a clinic was selected from dropdown, pass its numeric id
+ */
+export async function sendPatientToMonday(
+  p: Patient,
+  onboardingAction: "advance" | "needsInfo",
+  clinicLabelId: number | null,
+): Promise<void> {
+  const tasks: (Promise<void> | null)[] = [];
+
+  // ── Name ──
+  tasks.push(writeItemName(p.id, p.name));
+
+  // ── Demographics ──
+  tasks.push(writeText(p.id, COL.dob, p.dob));
+  if (p.ptPhone) tasks.push(writePhone(p.id, COL.ptPhone, p.ptPhone));
+  if (p.email) tasks.push(writeText(p.id, COL.email, p.email));
+  tasks.push(statusTask(p.id, COL.gender, p.gender, GENDER_INDEX));
+  if (p.patientAddress) tasks.push(writeLocation(p.id, COL.patientAddress, p.patientAddress));
+
+  // ── Insurance ──
+  tasks.push(statusTask(p.id, COL.generalInsurance, p.generalInsurance, GENERAL_INSURANCE_INDEX));
+  tasks.push(statusTask(p.id, COL.primaryInsurance, p.primaryInsurance, PRIMARY_INSURANCE_INDEX));
+  tasks.push(statusTask(p.id, COL.secondaryInsurance, p.secondaryInsurance, SECONDARY_INSURANCE_INDEX));
+  if (p.memberId1) tasks.push(writeText(p.id, COL.memberId1, p.memberId1));
+  if (p.memberId2) tasks.push(writeText(p.id, COL.memberId2, p.memberId2));
+
+  // ── Working cost-sharing (numeric) ──
+  if (p.workingCoinsurance) tasks.push(writeNumber(p.id, COL.workingCoinsurance, p.workingCoinsurance));
+  if (p.workingDeductible) tasks.push(writeNumber(p.id, COL.workingDeductible, p.workingDeductible));
+  if (p.workingDeductibleRemaining) tasks.push(writeNumber(p.id, COL.workingDeductibleRemaining, p.workingDeductibleRemaining));
+  if (p.workingOopMax) tasks.push(writeNumber(p.id, COL.workingOopMax, p.workingOopMax));
+  if (p.workingOopMaxRemaining) tasks.push(writeNumber(p.id, COL.workingOopMaxRemaining, p.workingOopMaxRemaining));
+
+  // ── Doctor ──
+  tasks.push(statusTask(p.id, COL.doctorStatus, p.doctorStatus, DOCTOR_STATUS_INDEX));
+  if (p.doctorName) tasks.push(writeText(p.id, COL.doctorName, p.doctorName));
+  if (p.doctorPhone) tasks.push(writePhone(p.id, COL.doctorPhone, p.doctorPhone));
+  if (p.doctorNpi) tasks.push(writeText(p.id, COL.doctorNpi, p.doctorNpi));
+  tasks.push(statusTask(p.id, COL.clinicalsMethod, p.clinicalsMethod, CLINICALS_METHOD_INDEX));
+  if (p.doctorEmail) tasks.push(writeEmail(p.id, COL.doctorEmail, p.doctorEmail));
+  if (p.doctorFax) tasks.push(writeEmail(p.id, COL.doctorFax, p.doctorFax));
+  if (clinicLabelId !== null) {
+    tasks.push(writeDropdownIds(p.id, COL.clinicName, [clinicLabelId]));
+  }
+  if (p.clinicAddress) tasks.push(writeLocation(p.id, COL.clinicAddress, p.clinicAddress));
+
+  // ── Serving / Product ──
+  tasks.push(statusTask(p.id, COL.referralType, p.referralType, REFERRAL_TYPE_INDEX));
+  tasks.push(statusTask(p.id, COL.referralSource, p.referralSource, REFERRAL_SOURCE_INDEX));
+  tasks.push(statusTask(p.id, COL.requestType, p.requestType, REQUEST_TYPE_INDEX));
+  tasks.push(statusTask(p.id, COL.cgmCrossSell, p.cgmCrossSell, CGM_CROSS_SELL_INDEX));
+  tasks.push(statusTask(p.id, COL.serving, p.serving, SERVING_INDEX));
+  tasks.push(statusTask(p.id, COL.pumpType, p.pumpType, PUMP_TYPE_INDEX));
+  tasks.push(statusTask(p.id, COL.cgmType, p.cgmType, CGM_TYPE_INDEX));
+  tasks.push(statusTask(p.id, COL.insulinPumpCoveragePath, p.insulinPumpCoveragePath, INSULIN_PUMP_COVERAGE_PATH_INDEX));
+  tasks.push(statusTask(p.id, COL.cgmCoveragePath, p.cgmCoveragePath, CGM_COVERAGE_PATH_INDEX));
+
+  // ── Move to Onboarding ──
+  const onboardingLabel = onboardingAction === "advance" ? "Advance to MN" : "Need More Info.";
+  tasks.push(statusTask(p.id, COL.moveToOnboarding, onboardingLabel, MOVE_TO_ONBOARDING_INDEX));
+
+  // Fire all writes in parallel (filter out nulls)
+  await Promise.all(tasks.filter(Boolean));
 }

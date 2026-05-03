@@ -1,76 +1,60 @@
-import { useState } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import type { Patient } from "@/lib/workflow";
+import { hasValidZip } from "@/lib/workflow";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { COL } from "@/lib/mondayApi";
-import { writeStatus, writeTextField, writePhoneField, writeEmailField } from "@/lib/mondayWrite";
 import { DOCTOR_STATUS_INDEX, CLINICALS_METHOD_INDEX } from "@/lib/mondayMapping";
-import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, Plus, Search } from "lucide-react";
 
 interface Props {
   patient: Patient;
   onUpdate: (patch: Partial<Patient>) => void;
+  clinicLabels: { id: number; name: string }[];
+  onClinicSelect: (id: number, name: string) => void;
+  onClinicCreate: (name: string) => void;
 }
 
-export function DoctorPanel({ patient, onUpdate }: Props) {
-  const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [timers, setTimers] = useState<Record<string, ReturnType<typeof setTimeout>>>({});
+export function DoctorPanel({ patient, onUpdate, clinicLabels, onClinicSelect, onClinicCreate }: Props) {
+  const [clinicSearch, setClinicSearch] = useState("");
+  const [showClinicDropdown, setShowClinicDropdown] = useState(false);
+  const [newClinicName, setNewClinicName] = useState("");
+  const [showAddClinic, setShowAddClinic] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const doWrite = async (key: string, fn: () => Promise<void>) => {
-    setSaving((s) => ({ ...s, [key]: true }));
-    try {
-      await fn();
-    } catch (e) {
-      toast.error(`Failed to save ${key}`, {
-        description: e instanceof Error ? e.message : String(e),
-      });
-    } finally {
-      setSaving((s) => ({ ...s, [key]: false }));
-    }
+  const zipValid = hasValidZip(patient.clinicAddress);
+
+  const filteredClinics = useMemo(() => {
+    if (!clinicSearch.trim()) return clinicLabels.slice(0, 20);
+    const q = clinicSearch.toLowerCase();
+    return clinicLabels.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 20);
+  }, [clinicLabels, clinicSearch]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowClinicDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const handleClinicPick = (clinic: { id: number; name: string }) => {
+    onClinicSelect(clinic.id, clinic.name);
+    setClinicSearch("");
+    setShowClinicDropdown(false);
   };
 
-  const handleText = (field: keyof Patient, colId: string, value: string) => {
-    onUpdate({ [field]: value });
-    if (timers[field]) clearTimeout(timers[field]);
-    const t = setTimeout(() => {
-      doWrite(field, () => writeTextField(patient.id, colId, value));
-    }, 800);
-    setTimers((prev) => ({ ...prev, [field]: t }));
+  const handleAddClinic = () => {
+    if (!newClinicName.trim()) return;
+    onClinicCreate(newClinicName.trim());
+    setNewClinicName("");
+    setShowAddClinic(false);
   };
-
-  const handlePhone = (field: keyof Patient, colId: string, value: string) => {
-    onUpdate({ [field]: value });
-    if (timers[field]) clearTimeout(timers[field]);
-    const t = setTimeout(() => {
-      doWrite(field, () => writePhoneField(patient.id, colId, value));
-    }, 800);
-    setTimers((prev) => ({ ...prev, [field]: t }));
-  };
-
-  const handleEmail = (field: keyof Patient, colId: string, value: string) => {
-    onUpdate({ [field]: value });
-    if (timers[field]) clearTimeout(timers[field]);
-    const t = setTimeout(() => {
-      doWrite(field, () => writeEmailField(patient.id, colId, value));
-    }, 800);
-    setTimers((prev) => ({ ...prev, [field]: t }));
-  };
-
-  const handleStatus = (
-    field: keyof Patient,
-    colId: string,
-    label: string,
-    indexMap: Record<string, number>,
-  ) => {
-    onUpdate({ [field]: label });
-    doWrite(field, () => writeStatus(patient.id, colId, label, indexMap));
-  };
-
-  const Spinner = ({ field }: { field: string }) =>
-    saving[field] ? <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" /> : null;
 
   return (
     <Card className="shadow-card">
@@ -81,10 +65,10 @@ export function DoctorPanel({ patient, onUpdate }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {/* Doctor Status */}
           <div className="space-y-1.5">
-            <Label className="flex items-center gap-2">Doctor Status <Spinner field="doctorStatus" /></Label>
+            <Label>Doctor Status</Label>
             <Select
               value={patient.doctorStatus || undefined}
-              onValueChange={(v) => handleStatus("doctorStatus", COL.doctorStatus, v, DOCTOR_STATUS_INDEX)}
+              onValueChange={(v) => onUpdate({ doctorStatus: v })}
             >
               <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
               <SelectContent>
@@ -97,10 +81,10 @@ export function DoctorPanel({ patient, onUpdate }: Props) {
 
           {/* Clinicals Method */}
           <div className="space-y-1.5">
-            <Label className="flex items-center gap-2">Clinicals Method <Spinner field="clinicalsMethod" /></Label>
+            <Label>Clinicals Method</Label>
             <Select
               value={patient.clinicalsMethod || undefined}
-              onValueChange={(v) => handleStatus("clinicalsMethod", COL.clinicalsMethod, v, CLINICALS_METHOD_INDEX)}
+              onValueChange={(v) => onUpdate({ clinicalsMethod: v })}
             >
               <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
               <SelectContent>
@@ -113,66 +97,134 @@ export function DoctorPanel({ patient, onUpdate }: Props) {
 
           {/* Doctor Name */}
           <div className="space-y-1.5">
-            <Label className="flex items-center gap-2">Doctor Name <Spinner field="doctorName" /></Label>
+            <Label>Doctor Name</Label>
             <Input
               value={patient.doctorName}
-              onChange={(e) => handleText("doctorName", COL.doctorName, e.target.value)}
+              onChange={(e) => onUpdate({ doctorName: e.target.value })}
               placeholder="Dr. Name"
             />
           </div>
 
           {/* Doctor NPI */}
           <div className="space-y-1.5">
-            <Label className="flex items-center gap-2">Doctor NPI <Spinner field="doctorNpi" /></Label>
+            <Label>Doctor NPI</Label>
             <Input
               value={patient.doctorNpi}
-              onChange={(e) => handleText("doctorNpi", COL.doctorNpi, e.target.value)}
+              onChange={(e) => onUpdate({ doctorNpi: e.target.value })}
               placeholder="NPI number"
             />
           </div>
 
           {/* Doctor Phone */}
           <div className="space-y-1.5">
-            <Label className="flex items-center gap-2">Doctor Phone <Spinner field="doctorPhone" /></Label>
+            <Label>Doctor Phone</Label>
             <Input
               value={patient.doctorPhone}
-              onChange={(e) => handlePhone("doctorPhone", COL.doctorPhone, e.target.value)}
+              onChange={(e) => onUpdate({ doctorPhone: e.target.value })}
               placeholder="Phone number"
             />
           </div>
 
           {/* Doctor Email */}
           <div className="space-y-1.5">
-            <Label className="flex items-center gap-2">Doctor Email <Spinner field="doctorEmail" /></Label>
+            <Label>Doctor Email</Label>
             <Input
               type="email"
               value={patient.doctorEmail}
-              onChange={(e) => handleEmail("doctorEmail", COL.doctorEmail, e.target.value)}
+              onChange={(e) => onUpdate({ doctorEmail: e.target.value })}
               placeholder="doctor@clinic.com"
             />
           </div>
 
           {/* Doctor Fax */}
           <div className="space-y-1.5">
-            <Label className="flex items-center gap-2">Doctor Fax (@rcfax) <Spinner field="doctorFax" /></Label>
+            <Label>Doctor Fax (@rcfax)</Label>
             <Input
               type="email"
               value={patient.doctorFax}
-              onChange={(e) => handleEmail("doctorFax", COL.doctorFax, e.target.value)}
+              onChange={(e) => onUpdate({ doctorFax: e.target.value })}
               placeholder="fax@rcfax.com"
             />
           </div>
 
-          {/* Clinic Name (read-only — dropdown from Monday) */}
-          <div className="space-y-1.5">
-            <Label>Clinic Name</Label>
-            <Input value={patient.clinicName} readOnly className="bg-muted/50" />
+          {/* Clinic Name — searchable combobox */}
+          <div className="space-y-1.5 relative" ref={dropdownRef}>
+            <Label className="flex items-center justify-between">
+              <span>Clinic Name</span>
+              <Button
+                variant="ghost" size="sm"
+                className="h-6 px-2 text-xs gap-1"
+                onClick={() => setShowAddClinic(!showAddClinic)}
+              >
+                <Plus className="h-3 w-3" /> Add New
+              </Button>
+            </Label>
+
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={clinicSearch || patient.clinicName}
+                onChange={(e) => {
+                  setClinicSearch(e.target.value);
+                  setShowClinicDropdown(true);
+                }}
+                onFocus={() => setShowClinicDropdown(true)}
+                placeholder="Search clinics…"
+                className="pl-9"
+              />
+            </div>
+
+            {showClinicDropdown && (
+              <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-48 overflow-y-auto">
+                {filteredClinics.length === 0 ? (
+                  <p className="px-3 py-2 text-sm text-muted-foreground">No clinics found</p>
+                ) : (
+                  filteredClinics.map((c) => (
+                    <button
+                      key={c.id}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
+                      onClick={() => handleClinicPick(c)}
+                    >
+                      {c.name}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Add new clinic inline */}
+            {showAddClinic && (
+              <div className="flex gap-2 mt-2">
+                <Input
+                  value={newClinicName}
+                  onChange={(e) => setNewClinicName(e.target.value)}
+                  placeholder="New clinic name…"
+                  className="flex-1"
+                  onKeyDown={(e) => e.key === "Enter" && handleAddClinic()}
+                />
+                <Button size="sm" onClick={handleAddClinic} disabled={!newClinicName.trim()}>
+                  Add
+                </Button>
+              </div>
+            )}
           </div>
 
-          {/* Clinic Address (read-only — location) */}
+          {/* Clinic Address — with zip validation */}
           <div className="space-y-1.5 md:col-span-2">
-            <Label>Clinic Address</Label>
-            <Input value={patient.clinicAddress} readOnly className="bg-muted/50" />
+            <Label className="flex items-center gap-2">
+              Clinic Address
+              {!zipValid && (
+                <span className="text-xs text-red-500 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" /> Must include a 5-digit zip code
+                </span>
+              )}
+            </Label>
+            <Input
+              value={patient.clinicAddress}
+              onChange={(e) => onUpdate({ clinicAddress: e.target.value })}
+              placeholder="123 Main St, City, ST 12345"
+              className={!zipValid ? "border-red-300" : ""}
+            />
           </div>
         </div>
       </CardContent>

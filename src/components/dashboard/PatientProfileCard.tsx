@@ -1,34 +1,129 @@
+import { useState } from "react";
 import type { Patient } from "@/lib/workflow";
-import { CalendarDays, User, Phone, Mail, Heart } from "lucide-react";
+import { formatPhone } from "@/lib/workflow";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CalendarDays, User, Phone, Mail, Heart, MapPin, AlertCircle } from "lucide-react";
 
 interface Props {
   patient: Patient;
+  onUpdate: (patch: Partial<Patient>) => void;
 }
 
-function Field({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="flex items-start gap-2 min-w-0">
-      <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
-        {icon}
-      </div>
-      <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</p>
-        <p className="text-sm font-medium truncate" title={value || "—"}>{value || "—"}</p>
-      </div>
-    </div>
-  );
-}
+export function PatientProfileCard({ patient, onUpdate }: Props) {
+  const alreadyInSystem = patient.alreadyInSystem?.toLowerCase();
 
-export function PatientProfileCard({ patient }: Props) {
+  const handlePhoneChange = (value: string) => {
+    onUpdate({ ptPhone: formatPhone(value) });
+  };
+
   return (
-    <div className="rounded-xl bg-card border shadow-card p-4">
-      <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Patient Profile</p>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        <Field icon={<User className="h-4 w-4" />} label="Name" value={patient.name} />
-        <Field icon={<CalendarDays className="h-4 w-4" />} label="DOB" value={patient.dob} />
-        <Field icon={<Phone className="h-4 w-4" />} label="Phone" value={patient.ptPhone} />
-        <Field icon={<Mail className="h-4 w-4" />} label="Email" value={patient.email} />
-        <Field icon={<Heart className="h-4 w-4" />} label="Gender" value={patient.gender} />
+    <div className="rounded-xl bg-card border shadow-card p-5">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Patient Profile</p>
+        {patient.alreadyInSystem && (
+          <Badge
+            variant="outline"
+            className={
+              alreadyInSystem === "yes"
+                ? "border-red-400 bg-red-50 text-red-700"
+                : "border-green-400 bg-green-50 text-green-700"
+            }
+          >
+            <AlertCircle className="h-3 w-3 mr-1" />
+            {alreadyInSystem === "yes" ? "Already In System" : "New Patient"}
+          </Badge>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Name */}
+        <div className="space-y-1">
+          <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <User className="h-3.5 w-3.5" /> Name
+          </Label>
+          <Input
+            value={patient.name}
+            onChange={(e) => onUpdate({ name: e.target.value })}
+            placeholder="Patient name"
+            className="h-9"
+          />
+        </div>
+
+        {/* DOB — text input formatted as MM/DD/YYYY */}
+        <div className="space-y-1">
+          <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <CalendarDays className="h-3.5 w-3.5" /> DOB
+          </Label>
+          <Input
+            value={patient.dob}
+            onChange={(e) => onUpdate({ dob: e.target.value })}
+            placeholder="MM/DD/YYYY"
+            className="h-9"
+          />
+        </div>
+
+        {/* Phone */}
+        <div className="space-y-1">
+          <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Phone className="h-3.5 w-3.5" /> Phone
+          </Label>
+          <Input
+            value={patient.ptPhone}
+            onChange={(e) => handlePhoneChange(e.target.value)}
+            placeholder="(xxx) xxx-xxxx"
+            className="h-9"
+          />
+        </div>
+
+        {/* Email */}
+        <div className="space-y-1">
+          <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Mail className="h-3.5 w-3.5" /> Email
+          </Label>
+          <Input
+            type="email"
+            value={patient.email}
+            onChange={(e) => onUpdate({ email: e.target.value })}
+            placeholder="patient@email.com"
+            className="h-9"
+          />
+        </div>
+
+        {/* Gender */}
+        <div className="space-y-1">
+          <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Heart className="h-3.5 w-3.5" /> Gender
+          </Label>
+          <Select
+            value={patient.gender || "_blank"}
+            onValueChange={(v) => onUpdate({ gender: v === "_blank" ? "" : v })}
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue placeholder="Select…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_blank">—</SelectItem>
+              <SelectItem value="Male">Male</SelectItem>
+              <SelectItem value="Female">Female</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Patient Address */}
+        <div className="space-y-1">
+          <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <MapPin className="h-3.5 w-3.5" /> Address
+          </Label>
+          <Input
+            value={patient.patientAddress}
+            onChange={(e) => onUpdate({ patientAddress: e.target.value })}
+            placeholder="Patient address"
+            className="h-9"
+          />
+        </div>
       </div>
     </div>
   );

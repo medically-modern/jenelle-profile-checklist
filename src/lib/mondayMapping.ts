@@ -22,6 +22,11 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     email: col(item, COL.email),
     gender: col(item, COL.gender),
     dateOfIntake: col(item, COL.dateOfIntake),
+    patientAddress: col(item, COL.patientAddress),
+
+    // Status
+    alreadyInSystem: col(item, COL.alreadyInSystem),
+    moveToOnboarding: col(item, COL.moveToOnboarding),
 
     // Stedi
     runStediEligibility: col(item, COL.runStediEligibility),
@@ -58,6 +63,13 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     memberId1: col(item, COL.memberId1),
     memberId2: col(item, COL.memberId2),
     secondaryInsurance: col(item, COL.secondaryInsurance),
+
+    // Working cost-sharing
+    workingCoinsurance: col(item, COL.workingCoinsurance),
+    workingDeductible: col(item, COL.workingDeductible),
+    workingDeductibleRemaining: col(item, COL.workingDeductibleRemaining),
+    workingOopMax: col(item, COL.workingOopMax),
+    workingOopMaxRemaining: col(item, COL.workingOopMaxRemaining),
 
     // Doctor
     doctorStatus: col(item, COL.doctorStatus),
@@ -162,4 +174,12 @@ export const GENDER_INDEX: Record<string, number> = {
 
 export const RUN_STEDI_INDEX: Record<string, number> = {
   "Failed": 0, "Run": 1,
+};
+
+export const ALREADY_IN_SYSTEM_INDEX: Record<string, number> = {
+  "Yes": 0, "No": 1,
+};
+
+export const MOVE_TO_ONBOARDING_INDEX: Record<string, number> = {
+  "Already Serving": 0, "Advance to MN": 1, "Send Back To Referral": 2, "Need More Info.": 3,
 };

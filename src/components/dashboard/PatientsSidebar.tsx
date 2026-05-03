@@ -1,4 +1,3 @@
-import { NavLink } from "react-router-dom";
 import {
   Sidebar,
   SidebarContent,
@@ -79,7 +78,7 @@ export function PatientsSidebar({ patients, selectedId, onSelect, loading, error
                       <div className="min-w-0 text-left">
                         <p className="text-sm font-medium truncate">{p.name}</p>
                         <p className="text-[11px] text-muted-foreground truncate">
-                          {p.receivedAt ? new Date(p.receivedAt).toLocaleDateString() : "—"}
+                          {p.dateOfIntake || "—"}
                         </p>
                       </div>
                     )}
