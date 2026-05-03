@@ -182,14 +182,12 @@ export function ServingPanel({ patient, onUpdate, onNext }: Props) {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
-            <StatusSelect
-              value={patient.cgmCrossSell}
-              config={{ field: "cgmCrossSell", label: "Cross-Sell Status", indexMap: CGM_CROSS_SELL_INDEX }}
-              onChange={(v) => onUpdate({ cgmCrossSell: v })}
-              hint={xsellHint ?? undefined}
-            />
-          </div>
+          <StatusSelect
+            value={patient.cgmCrossSell}
+            config={{ field: "cgmCrossSell", label: "Cross-Sell Status", indexMap: CGM_CROSS_SELL_INDEX }}
+            onChange={(v) => onUpdate({ cgmCrossSell: v })}
+            hint={xsellHint ?? undefined}
+          />
 
           {crossSellStatus === "Evaluate" && !primaryIns && (
             <p className="text-xs text-muted-foreground flex items-center gap-1">
