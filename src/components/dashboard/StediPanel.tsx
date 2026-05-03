@@ -20,31 +20,23 @@ import {
 import { toast } from "sonner";
 import { Play, Loader2, AlertTriangle, CheckCircle2, Save, CheckCheck, ArrowRight, ChevronsUpDown, Check } from "lucide-react";
 
-// Profile fields that need to be in Monday before Stedi can run.
-// Stedi reads from Monday — local edits must be synced first.
+// Stedi reads from Monday, so the four fields it actually consumes —
+// Name, DOB, General Insurance, Member ID 1 — must be synced before it
+// runs. Other profile fields (phone, email, gender, address, member id 2)
+// get written on the final Submit step, so they don't trigger Fix Profile.
 type ProfileSnapshot = {
   name: string;
   dob: string;
-  ptPhone: string;
-  email: string;
-  gender: string;
-  patientAddress: string;
   generalInsurance: string;
   memberId1: string;
-  memberId2: string;
 };
 
 function snapshotProfile(p: Patient): ProfileSnapshot {
   return {
     name: p.name,
     dob: p.dob,
-    ptPhone: p.ptPhone,
-    email: p.email,
-    gender: p.gender,
-    patientAddress: p.patientAddress,
     generalInsurance: p.generalInsurance,
     memberId1: p.memberId1,
-    memberId2: p.memberId2,
   };
 }
 
