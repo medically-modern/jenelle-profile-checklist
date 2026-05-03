@@ -24,6 +24,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     gender: col(item, COL.gender),
     dateOfIntake: col(item, COL.dateOfIntake),
     patientAddress: col(item, COL.patientAddress),
+    patientAddressLat: null,
+    patientAddressLng: null,
 
     // Status
     alreadyInSystem: col(item, COL.alreadyInSystem),
@@ -82,6 +84,8 @@ export function mondayItemToPatient(item: MondayItem): Patient {
     doctorFax: col(item, COL.doctorFax),
     clinicName: col(item, COL.clinicName),
     clinicAddress: col(item, COL.clinicAddress),
+    clinicAddressLat: null,
+    clinicAddressLng: null,
 
     // Serving / Product
     referralType: col(item, COL.referralType),

@@ -56,7 +56,7 @@ export async function sendPatientToMonday(
   if (p.ptPhone) tasks.push(writePhone(p.id, COL.ptPhone, phoneDigits(p.ptPhone)));
   if (p.email) tasks.push(writeText(p.id, COL.email, p.email));
   tasks.push(statusTask(p.id, COL.gender, p.gender, GENDER_INDEX));
-  if (p.patientAddress) tasks.push(writeLocation(p.id, COL.patientAddress, p.patientAddress));
+  if (p.patientAddress) tasks.push(writeLocation(p.id, COL.patientAddress, p.patientAddress, p.patientAddressLat ?? 0, p.patientAddressLng ?? 0));
 
   // ── Insurance ──
   tasks.push(statusTask(p.id, COL.generalInsurance, p.generalInsurance, GENERAL_INSURANCE_INDEX));
@@ -89,7 +89,7 @@ export async function sendPatientToMonday(
   if (clinicLabelId !== null) {
     tasks.push(writeDropdownIds(p.id, COL.clinicName, [clinicLabelId]));
   }
-  if (p.clinicAddress) tasks.push(writeLocation(p.id, COL.clinicAddress, p.clinicAddress));
+  if (p.clinicAddress) tasks.push(writeLocation(p.id, COL.clinicAddress, p.clinicAddress, p.clinicAddressLat ?? 0, p.clinicAddressLng ?? 0));
 
   // ── Serving / Product ──
   tasks.push(statusTask(p.id, COL.referralType, p.referralType, REFERRAL_TYPE_INDEX));
@@ -132,7 +132,7 @@ export async function writePatientProfile(p: Patient): Promise<void> {
   if (p.ptPhone) tasks.push(writePhone(p.id, COL.ptPhone, phoneDigits(p.ptPhone)));
   if (p.email) tasks.push(writeText(p.id, COL.email, p.email));
   tasks.push(statusTask(p.id, COL.gender, p.gender, GENDER_INDEX));
-  if (p.patientAddress) tasks.push(writeLocation(p.id, COL.patientAddress, p.patientAddress));
+  if (p.patientAddress) tasks.push(writeLocation(p.id, COL.patientAddress, p.patientAddress, p.patientAddressLat ?? 0, p.patientAddressLng ?? 0));
 
   // Insurance
   tasks.push(statusTask(p.id, COL.generalInsurance, p.generalInsurance, GENERAL_INSURANCE_INDEX));

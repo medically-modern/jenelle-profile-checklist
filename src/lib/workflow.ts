@@ -13,6 +13,8 @@ export interface Patient {
   gender: string;
   dateOfIntake: string;
   patientAddress: string;
+  patientAddressLat: number | null;
+  patientAddressLng: number | null;
 
   // ── Status / Workflow ──
   alreadyInSystem: string;
@@ -71,6 +73,8 @@ export interface Patient {
   doctorFax: string;
   clinicName: string;
   clinicAddress: string;
+  clinicAddressLat: number | null;
+  clinicAddressLng: number | null;
 
   // ── Serving / Product ──
   referralType: string;
@@ -148,11 +152,13 @@ export function phoneDigits(formatted: string): string {
 }
 
 /**
- * Validate a 5-digit zip code in an address string.
- * Returns the zip if valid, or null if not found / invalid.
+ * Extract the 5-digit zip code from an address string. Rejects ZIP+4 — we
+ * never store the dash-extension form in this app.
  */
 export function extractZip(address: string): string | null {
-  const match = address.match(/\b(\d{5})(?:-\d{4})?\b/);
+  // Reject explicit ZIP+4: "12345-6789" should never pass validation.
+  if (/\b\d{5}-\d{4}\b/.test(address)) return null;
+  const match = address.match(/\b(\d{5})\b/);
   return match ? match[1] : null;
 }
 

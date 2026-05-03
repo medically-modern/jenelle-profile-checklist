@@ -1,5 +1,6 @@
 import type { Patient } from "@/lib/workflow";
-import { formatPhone, normalizeDob } from "@/lib/workflow";
+import { formatPhone, normalizeDob, hasValidZip } from "@/lib/workflow";
+import { AddressAutocomplete } from "@/components/dashboard/AddressAutocomplete";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -120,17 +121,23 @@ export function PatientProfileCard({ patient, onUpdate }: Props) {
           </Select>
         </div>
 
-        {/* Patient Address */}
+        {/* Patient Address — Google Places autocomplete; ZIP+4 stripped to 5-digit */}
         <div className="space-y-1">
           <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <MapPin className="h-3.5 w-3.5" /> Address
           </Label>
-          <Input
+          <AddressAutocomplete
             value={patient.patientAddress}
-            onChange={(e) => onUpdate({ patientAddress: e.target.value })}
-            placeholder="Patient address"
-            className="h-9"
+            onChange={(r) => onUpdate({
+              patientAddress: r.address,
+              patientAddressLat: r.lat || null,
+              patientAddressLng: r.lng || null,
+            })}
+            placeholder="Start typing address…"
           />
+          {patient.patientAddress && !hasValidZip(patient.patientAddress) && (
+            <p className="text-xs text-amber-600">Address must include a 5-digit zip code (no -xxxx).</p>
+          )}
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import type { Patient } from "@/lib/workflow";
+import { AddressAutocomplete } from "@/components/dashboard/AddressAutocomplete";
 import { hasValidZip } from "@/lib/workflow";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -219,11 +220,15 @@ export function DoctorPanel({ patient, onUpdate, clinicLabels, onClinicSelect, o
                 </span>
               )}
             </Label>
-            <Input
+            <AddressAutocomplete
               value={patient.clinicAddress}
-              onChange={(e) => onUpdate({ clinicAddress: e.target.value })}
-              placeholder="123 Main St, City, ST 12345"
-              className={!zipValid ? "border-red-300" : ""}
+              onChange={(r) => onUpdate({
+                clinicAddress: r.address,
+                clinicAddressLat: r.lat || null,
+                clinicAddressLng: r.lng || null,
+              })}
+              placeholder="Start typing clinic address…"
+              className={`flex h-9 w-full rounded-md border ${!zipValid ? "border-red-300" : "border-input"} bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`}
             />
           </div>
         </div>

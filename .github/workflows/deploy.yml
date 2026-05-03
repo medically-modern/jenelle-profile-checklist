@@ -30,6 +30,7 @@ jobs:
       - run: npx vite build --base=/jenelle-profile-checklist/
         env:
           VITE_MONDAY_API_TOKEN: ${{ secrets.VITE_MONDAY_API_TOKEN }}
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
 
       - uses: actions/upload-pages-artifact@v3
         with:

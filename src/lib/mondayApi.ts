@@ -267,16 +267,23 @@ export async function writeNumber(itemId: string, columnId: string, raw: string)
   await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify(cleaned) });
 }
 
-/** Write a location column. */
-export async function writeLocation(itemId: string, columnId: string, address: string): Promise<void> {
-  // Location columns are tricky — we write as a simple text-like value
-  // Monday accepts { address, lat, lng } but we can also just set the address text
+/**
+ * Write a location column. Monday requires lat/lng; if we don't have
+ * coordinates yet we pass 0/0 — the address text still lands.
+ */
+export async function writeLocation(
+  itemId: string, columnId: string, address: string,
+  lat: number = 0, lng: number = 0,
+): Promise<void> {
   const query = `
     mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
-      change_simple_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+      change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
     }
   `;
-  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: address });
+  await gql(query, {
+    boardId: BOARD_ID, itemId, columnId,
+    value: JSON.stringify({ address, lat, lng }),
+  });
 }
 
 /** Write the item name. */
