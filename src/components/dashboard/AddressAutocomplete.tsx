@@ -3,55 +3,132 @@ import { useEffect, useRef, useState } from "react";
 let mapsLoaded = false;
 let mapsLoading = false;
 const loadCallbacks: (() => void)[] = [];
+let styleInjected = false;
+
+/** Strip "-NNNN" off any 5-digit zip. We only store 5-digit zips. */
+export function stripZipPlus4(addr: string): string {
+  return addr.replace(/(\b\d{5})-\d{4}\b/g, "$1");
+}
+
+/** Inject styles that force the Google autocomplete web component to match our UI */
+function injectAutocompleteStyles() {
+  if (styleInjected) return;
+  styleInjected = true;
+  const style = document.createElement("style");
+  style.textContent = `
+    gmp-place-autocomplete {
+      background-color: white !important;
+      border: 1px solid hsl(var(--input)) !important;
+      border-radius: 0.375rem !important;
+      height: 36px !important;
+      font-size: 0.875rem !important;
+      color: #111 !important;
+      --gmpac-color-on-surface: #111 !important;
+      --gmpac-color-surface: white !important;
+      --gmpac-color-on-surface-variant: #666 !important;
+    }
+    gmp-place-autocomplete input {
+      background-color: white !important;
+      color: #111 !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+/**
+ * Google's inline bootstrap loader — the ONLY way to get
+ * `google.maps.importLibrary()` to work (loads async, no deprecation warnings).
+ */
+function installBootstrapLoader(key: string) {
+  if ((window as any).google?.maps?.importLibrary) return;
+
+  const g: Record<string, string> = { key, v: "weekly" };
+  const c = "google";
+  const l = "importLibrary";
+  const q = "__ib__";
+  const m = document;
+  const b = window as any;
+  b[c] = b[c] || {};
+  const d = (b[c].maps = b[c].maps || {});
+  const r = new Set<string>();
+  const e = new URLSearchParams();
+  let h: Promise<void> | undefined;
+  let a: HTMLScriptElement;
+
+  const u = () =>
+    h ||
+    (h = new Promise<void>(async (f, n) => {
+      a = m.createElement("script");
+      e.set("libraries", [...r] + "");
+      for (const k in g)
+        e.set(
+          k.replace(/[A-Z]/g, (t) => "_" + t[0].toLowerCase()),
+          g[k],
+        );
+      e.set("callback", c + ".maps." + q);
+      a.src = `https://maps.googleapis.com/maps/api/js?` + e;
+      d[q] = f;
+      a.onerror = () => ((h = undefined), n(new Error("Google Maps JS SDK failed to load")));
+      a.nonce = (m.querySelector("script[nonce]") as HTMLScriptElement)?.nonce || "";
+      m.head.append(a);
+    }));
+
+  d[l]
+    ? console.warn("Google Maps JS API only loads once.")
+    : (d[l] = (f: string, ...n: any[]) => r.add(f) && u().then(() => d[l](f, ...n)));
+}
 
 async function loadGooglePlaces(): Promise<void> {
   if (mapsLoaded) return;
+
   if (mapsLoading) {
-    return new Promise((resolve) => { loadCallbacks.push(resolve); });
+    return new Promise((resolve) => {
+      loadCallbacks.push(resolve);
+    });
   }
+
   mapsLoading = true;
+
   const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
   if (!key) {
     console.warn("VITE_GOOGLE_MAPS_API_KEY is not set — address autocomplete disabled");
     mapsLoading = false;
     return;
   }
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`;
-    script.async = true;
-    script.onload = () => {
-      mapsLoaded = true;
-      mapsLoading = false;
-      loadCallbacks.forEach((cb) => cb());
-      loadCallbacks.length = 0;
-      resolve();
-    };
-    script.onerror = () => {
-      mapsLoading = false;
-      reject(new Error("Google Maps JS SDK failed to load"));
-    };
-    document.head.appendChild(script);
-  });
+
+  installBootstrapLoader(key);
+
+  try {
+    await google.maps.importLibrary("places");
+    await google.maps.importLibrary("geocoding");
+    mapsLoaded = true;
+    mapsLoading = false;
+    loadCallbacks.forEach((cb) => cb());
+    loadCallbacks.length = 0;
+  } catch (err) {
+    console.error("Failed to load Google Places library:", err);
+    mapsLoading = false;
+  }
 }
 
-/** Strip "-NNNN" off any 5-digit zip in the string. We only ever store 5-digit zips. */
-export function stripZipPlus4(addr: string): string {
-  return addr.replace(/(\b\d{5})-\d{4}\b/g, "$1");
+/** Geocode an address string to lat/lng using the Maps Geocoder */
+async function geocodeAddress(address: string): Promise<{ lat: number; lng: number }> {
+  try {
+    const geocoder = new google.maps.Geocoder();
+    const result = await geocoder.geocode({ address });
+    if (result.results?.[0]?.geometry?.location) {
+      const loc = result.results[0].geometry.location;
+      return { lat: loc.lat(), lng: loc.lng() };
+    }
+  } catch (err) {
+    console.warn("Geocoding failed:", err);
+  }
+  return { lat: 0, lng: 0 };
 }
 
-/** Build an address from PlaceResult components, guaranteeing the zip is included. */
-function buildFullAddress(place: google.maps.places.PlaceResult): string {
-  const components = place.address_components || [];
-  const get = (type: string) => components.find((c) => c.types.includes(type))?.long_name || "";
-  const streetNumber = get("street_number");
-  const route = get("route");
-  const city = get("locality") || get("sublocality_level_1") || get("administrative_area_level_3");
-  const state = components.find((c) => c.types.includes("administrative_area_level_1"))?.short_name || "";
-  const zip = get("postal_code");
-  const street = [streetNumber, route].filter(Boolean).join(" ");
-  const parts = [street, city, [state, zip].filter(Boolean).join(" ")].filter(Boolean);
-  return parts.join(", ");
+/** Try to reach the <input> inside the web component's shadow DOM */
+function getShadowInput(pac: HTMLElement): HTMLInputElement | null {
+  return pac.shadowRoot?.querySelector("input") ?? null;
 }
 
 export interface AddressResult {
@@ -68,88 +145,136 @@ interface Props {
 }
 
 export function AddressAutocomplete({ value, onChange, placeholder, className }: Props) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pacRef = useRef<HTMLElement | null>(null);
   const onChangeRef = useRef(onChange);
-  const lastSubmittedRef = useRef<string>(value);
+  const lastEmittedRef = useRef<string>(value);
   const [ready, setReady] = useState(mapsLoaded);
+  const [fallback, setFallback] = useState(false);
 
-  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
-
-  // Sync external value → input (e.g. switching patients)
+  // Keep the ref current so event listeners always call the latest onChange
   useEffect(() => {
-    if (inputRef.current && inputRef.current.value !== value) {
-      inputRef.current.value = value ?? "";
-      lastSubmittedRef.current = value ?? "";
-    }
-  }, [value]);
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
+  // Load the Google Places SDK
   useEffect(() => {
     loadGooglePlaces()
-      .then(() => {
-        // If no API key was configured, loadGooglePlaces resolves without
-        // actually loading the SDK. Only mark ready when google.maps.places
-        // is actually available so the next effect doesn't crash.
-        if (typeof window !== "undefined" &&
-            (window as unknown as { google?: { maps?: { places?: unknown } } }).google?.maps?.places) {
-          setReady(true);
-        }
-      })
-      .catch((err) => console.error("Failed to load Google Places:", err));
+      .then(() => setReady(true))
+      .catch(() => setFallback(true));
   }, []);
 
+  // Create the PlaceAutocompleteElement once the SDK is ready
   useEffect(() => {
-    if (!ready || !inputRef.current || autocompleteRef.current) return;
-    if (typeof window === "undefined" ||
-        !(window as unknown as { google?: { maps?: { places?: unknown } } }).google?.maps?.places) {
+    if (!ready || !containerRef.current || pacRef.current) return;
+
+    if (!(window as any).google?.maps?.places?.PlaceAutocompleteElement) {
+      setFallback(true);
       return;
     }
-    const autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
-      componentRestrictions: { country: "us" },
-      types: ["address"],
-      fields: ["address_components", "formatted_address", "geometry"],
-    });
-    autocomplete.addListener("place_changed", () => {
-      const place = autocomplete.getPlace();
-      if (!place) return;
-      let addr = "";
-      if ((place.address_components || []).length > 0) {
-        addr = buildFullAddress(place);
-      } else {
-        addr = place.formatted_address || inputRef.current?.value || "";
+
+    try {
+      // @ts-ignore — PlaceAutocompleteElement types lag behind the runtime
+      const pac = new google.maps.places.PlaceAutocompleteElement({
+        componentRestrictions: { country: "us" },
+        types: ["address"],
+      });
+
+      pac.style.width = "100%";
+      injectAutocompleteStyles();
+
+      // Listen for place selection
+      for (const evtName of ["gmp-placeselect", "gmp-select"]) {
+        pac.addEventListener(evtName, () => {
+          setTimeout(async () => {
+            let addr = (pac as any).value || "";
+            if (!addr) return;
+            addr = stripZipPlus4(addr);
+            // Sync the cleaned value back into the input
+            const inp = getShadowInput(pac);
+            if (inp && inp.value !== addr) inp.value = addr;
+            const coords = await geocodeAddress(addr);
+            lastEmittedRef.current = addr;
+            onChangeRef.current({ address: addr, lat: coords.lat, lng: coords.lng });
+          }, 50);
+        });
       }
-      if (!addr) return;
-      addr = stripZipPlus4(addr);
-      if (inputRef.current) inputRef.current.value = addr;
-      lastSubmittedRef.current = addr;
-      let lat = 0, lng = 0;
-      if (place.geometry?.location) {
-        lat = place.geometry.location.lat();
-        lng = place.geometry.location.lng();
+
+      // Propagate manual edits on blur (user typed without picking a suggestion)
+      const handleBlur = () => {
+        const inp = getShadowInput(pac);
+        if (!inp) return;
+        let current = stripZipPlus4(inp.value);
+        if (current !== inp.value) inp.value = current;
+        if (current && current !== lastEmittedRef.current) {
+          lastEmittedRef.current = current;
+          // No lat/lng available for manual edits — send 0/0
+          onChangeRef.current({ address: current, lat: 0, lng: 0 });
+        }
+      };
+
+      containerRef.current.appendChild(pac);
+      pacRef.current = pac;
+
+      // Pierce shadow DOM to set initial value + styles + blur listener
+      const initShadow = () => {
+        const shadow = pac.shadowRoot;
+        if (!shadow) return;
+        // Inject dark-text styles
+        const s = document.createElement("style");
+        s.textContent = `
+          input { background: white !important; color: #111 !important; }
+          * { color: #111 !important; }
+        `;
+        shadow.appendChild(s);
+        // Set initial value
+        const inp = shadow.querySelector("input");
+        if (inp) {
+          if (value) inp.value = value;
+          if (placeholder) inp.placeholder = placeholder;
+          inp.addEventListener("blur", handleBlur);
+        }
+      };
+      initShadow();
+      setTimeout(initShadow, 100);
+      setTimeout(initShadow, 500);
+    } catch (err) {
+      console.error("Failed to create PlaceAutocompleteElement:", err);
+      setFallback(true);
+    }
+
+    return () => {
+      if (pacRef.current && containerRef.current) {
+        try {
+          containerRef.current.removeChild(pacRef.current);
+        } catch {}
+        pacRef.current = null;
       }
-      onChangeRef.current({ address: addr, lat, lng });
-    });
-    autocompleteRef.current = autocomplete;
+    };
   }, [ready]);
 
-  // On blur, propagate manual edits if the user typed without picking a suggestion.
-  const handleBlur = () => {
-    if (!inputRef.current) return;
-    const current = stripZipPlus4(inputRef.current.value);
-    if (current !== inputRef.current.value) inputRef.current.value = current;
-    if (current !== lastSubmittedRef.current) {
-      lastSubmittedRef.current = current;
-      onChangeRef.current({ address: current, lat: 0, lng: 0 });
-    }
-  };
+  // Sync external value changes (e.g. patient switch) into the shadow input
+  useEffect(() => {
+    if (!pacRef.current || value === lastEmittedRef.current) return;
+    lastEmittedRef.current = value ?? "";
+    const inp = getShadowInput(pacRef.current);
+    if (inp) inp.value = value ?? "";
+  }, [value]);
 
-  return (
-    <input
-      ref={inputRef}
-      className={className ?? "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"}
-      defaultValue={value}
-      placeholder={placeholder ?? "Start typing address…"}
-      onBlur={handleBlur}
-    />
-  );
+  // Fallback: plain <input> when Google SDK is unavailable
+  if (!ready || fallback) {
+    return (
+      <input
+        className={
+          className ??
+          "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        }
+        value={value}
+        onChange={(e) => onChange({ address: e.target.value, lat: 0, lng: 0 })}
+        placeholder={placeholder ?? "Start typing address…"}
+      />
+    );
+  }
+
+  return <div ref={containerRef} />;
 }
