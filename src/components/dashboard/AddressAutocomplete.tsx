@@ -86,12 +86,24 @@ export function AddressAutocomplete({ value, onChange, placeholder, className }:
 
   useEffect(() => {
     loadGooglePlaces()
-      .then(() => setReady(true))
+      .then(() => {
+        // If no API key was configured, loadGooglePlaces resolves without
+        // actually loading the SDK. Only mark ready when google.maps.places
+        // is actually available so the next effect doesn't crash.
+        if (typeof window !== "undefined" &&
+            (window as unknown as { google?: { maps?: { places?: unknown } } }).google?.maps?.places) {
+          setReady(true);
+        }
+      })
       .catch((err) => console.error("Failed to load Google Places:", err));
   }, []);
 
   useEffect(() => {
     if (!ready || !inputRef.current || autocompleteRef.current) return;
+    if (typeof window === "undefined" ||
+        !(window as unknown as { google?: { maps?: { places?: unknown } } }).google?.maps?.places) {
+      return;
+    }
     const autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
       componentRestrictions: { country: "us" },
       types: ["address"],
