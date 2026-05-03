@@ -1,4 +1,5 @@
 import type { Patient } from "./workflow";
+import { formatPhone } from "./workflow";
 import type { MondayItem, MondayColumnValue } from "./mondayApi";
 import { COL } from "./mondayApi";
 
@@ -18,7 +19,7 @@ export function mondayItemToPatient(item: MondayItem): Patient {
 
     // Demographics
     dob: col(item, COL.dob),
-    ptPhone: col(item, COL.ptPhone),
+    ptPhone: formatPhone(col(item, COL.ptPhone)),
     email: col(item, COL.email),
     gender: col(item, COL.gender),
     dateOfIntake: col(item, COL.dateOfIntake),
