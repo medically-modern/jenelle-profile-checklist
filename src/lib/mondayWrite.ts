@@ -26,8 +26,12 @@ export async function triggerStediRun(itemId: string): Promise<void> {
 function statusTask(
   itemId: string, colId: string, label: string, indexMap: Record<string, number>,
 ): Promise<void> | null {
+  if (!label) return null; // skip empty labels
   const idx = indexMap[label];
-  if (idx === undefined) return null;
+  if (idx === undefined) {
+    console.warn(`No index found for status label "${label}" in column ${colId}`);
+    return null;
+  }
   return writeStatusIndex(itemId, colId, idx);
 }
 

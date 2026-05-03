@@ -167,7 +167,7 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}): P
   }
   const json = await res.json();
   if (json.errors) {
-    console.error("Monday API GraphQL error", json.errors);
+    console.error("Monday API GraphQL error", JSON.stringify(json.errors, null, 2), { query: query.trim().slice(0, 120), variables });
     throw new Error(json.errors.map((e: { message: string }) => e.message).join("; "));
   }
   return json.data as T;
@@ -254,15 +254,17 @@ export async function writeEmail(itemId: string, columnId: string, email: string
   await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify({ email, text: text ?? email }) });
 }
 
-/** Write a numeric column. */
-export async function writeNumber(itemId: string, columnId: string, num: string): Promise<void> {
+/** Write a numeric column. Strips non-numeric chars (\$, %, commas) before sending. */
+export async function writeNumber(itemId: string, columnId: string, raw: string): Promise<void> {
+  // Strip \$, %, commas, spaces — keep digits, dots, minus signs
+  const cleaned = raw.replace(/[^\d.\-]/g, "");
+  if (!cleaned) return; // nothing to write
   const query = `
     mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
       change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
     }
   `;
-  // Numeric columns accept a JSON string of the number, or empty string to clear
-  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify(num) });
+  await gql(query, { boardId: BOARD_ID, itemId, columnId, value: JSON.stringify(cleaned) });
 }
 
 /** Write a location column. */
