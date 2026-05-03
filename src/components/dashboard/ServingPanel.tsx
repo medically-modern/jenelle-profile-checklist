@@ -1,9 +1,10 @@
 import { useEffect } from "react";
 import type { Patient } from "@/lib/workflow";
-import { canCrossSellCgm, deriveServing } from "@/lib/workflow";
+import { canCrossSellCgm, crossSellReason, deriveServing } from "@/lib/workflow";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   REFERRAL_TYPE_INDEX, REFERRAL_SOURCE_INDEX,
@@ -11,11 +12,12 @@ import {
   CGM_TYPE_INDEX, CGM_CROSS_SELL_INDEX,
   INSULIN_PUMP_COVERAGE_PATH_INDEX, CGM_COVERAGE_PATH_INDEX,
 } from "@/lib/mondayMapping";
-import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, XCircle, Shield, ArrowRight } from "lucide-react";
 
 interface Props {
   patient: Patient;
   onUpdate: (patch: Partial<Patient>) => void;
+  onNext?: () => void;
 }
 
 interface StatusFieldConfig {
@@ -24,8 +26,8 @@ interface StatusFieldConfig {
   indexMap: Record<string, number>;
 }
 
-function StatusSelect({ value, config, onChange }: {
-  value: string; config: StatusFieldConfig; onChange: (v: string) => void;
+function StatusSelect({ value, config, onChange, hint }: {
+  value: string; config: StatusFieldConfig; onChange: (v: string) => void; hint?: string;
 }) {
   return (
     <div className="space-y-1.5">
@@ -38,11 +40,29 @@ function StatusSelect({ value, config, onChange }: {
           ))}
         </SelectContent>
       </Select>
+      {hint && <p className="text-xs text-blue-600">{hint}</p>}
     </div>
   );
 }
 
-export function ServingPanel({ patient, onUpdate }: Props) {
+/**
+ * Build the small blue explanation under the Cross-Sell dropdown based on
+ * the auto-evaluated reason. Manual / "Already Serving CGM" → no hint.
+ */
+function crossSellHint(crossSellStatus: string, primaryIns: string): string | null {
+  const reason = crossSellReason(primaryIns);
+  if (crossSellStatus === "Cross-Sell" && reason === "eligible") {
+    return `${primaryIns} is a non-Medicaid plan, so this patient is eligible for CGM cross-sell`;
+  }
+  if (crossSellStatus === "Couldn't Cross-Sell") {
+    if (reason === "medicaid") return `${primaryIns} is a Medicaid plan`;
+    if (reason === "united") return `${primaryIns} is United, so we choose not to cross-sell United patients`;
+    if (reason === "cigna") return `${primaryIns} is Cigna, so we choose not to cross-sell Cigna patients`;
+  }
+  return null;
+}
+
+export function ServingPanel({ patient, onUpdate, onNext }: Props) {
   const crossSellStatus = patient.cgmCrossSell;
   const primaryIns = patient.primaryInsurance;
   const requestType = patient.requestType;
@@ -55,11 +75,11 @@ export function ServingPanel({ patient, onUpdate }: Props) {
       onUpdate({
         cgmCrossSell: "Cross-Sell",
         cgmType: "Dexcom G7",
-        // cgmCoveragePath left blank — user must pick Insulin or Hypoglycemia
+        cgmCoveragePath: "Insulin",  // All cross-sells default to Insulin path
       });
     } else {
       onUpdate({
-        cgmCrossSell: "Couldn't Cross-Sell",
+        cgmCrossSell: "Couldn\u2019t Cross-Sell",
         cgmType: "Not Serving",
         cgmCoveragePath: "Not Serving",
       });
@@ -76,10 +96,36 @@ export function ServingPanel({ patient, onUpdate }: Props) {
   }, [crossSellStatus, requestType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isCrossSellEligible = crossSellStatus === "Cross-Sell";
-  const needsCgmCoveragePath = isCrossSellEligible && !patient.cgmCoveragePath;
+  const xsellHint = crossSellHint(crossSellStatus, primaryIns);
 
   return (
     <div className="space-y-5">
+      {/* Primary Insurance summary (carried over from Stedi tab) */}
+      <Card className="shadow-card border-blue-200 bg-blue-50/40">
+        <CardContent className="pt-5 pb-4">
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <Shield className="h-4 w-4 text-blue-600 shrink-0" />
+            <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Primary Insurance</span>
+            <span className="font-semibold text-foreground">
+              {patient.primaryInsurance || <span className="text-amber-600">Not selected — set on Stedi tab</span>}
+            </span>
+            {patient.memberId1 && (
+              <span className="text-muted-foreground">· Member ID {patient.memberId1}</span>
+            )}
+            {patient.secondaryInsurance && (
+              <span className="ml-auto inline-flex items-center gap-1.5">
+                <Badge variant="outline" className="border-blue-300 bg-white text-blue-800">
+                  Secondary: {patient.secondaryInsurance}
+                </Badge>
+                {patient.memberId2 && (
+                  <span className="text-xs text-muted-foreground">ID {patient.memberId2}</span>
+                )}
+              </span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Section 1: Referral */}
       <Card className="shadow-card">
         <CardHeader className="pb-3">
@@ -112,7 +158,7 @@ export function ServingPanel({ patient, onUpdate }: Props) {
                 className={
                   crossSellStatus === "Cross-Sell"
                     ? "border-green-400 bg-green-50 text-green-700"
-                    : crossSellStatus === "Couldn't Cross-Sell"
+                    : crossSellStatus === "Couldn\u2019t Cross-Sell"
                       ? "border-red-400 bg-red-50 text-red-700"
                       : crossSellStatus === "Already Serving CGM"
                         ? "border-blue-400 bg-blue-50 text-blue-700"
@@ -120,7 +166,7 @@ export function ServingPanel({ patient, onUpdate }: Props) {
                 }
               >
                 {crossSellStatus === "Cross-Sell" && <CheckCircle2 className="h-3 w-3 mr-1" />}
-                {crossSellStatus === "Couldn't Cross-Sell" && <XCircle className="h-3 w-3 mr-1" />}
+                {crossSellStatus === "Couldn\u2019t Cross-Sell" && <XCircle className="h-3 w-3 mr-1" />}
                 {crossSellStatus === "Evaluate" && <AlertTriangle className="h-3 w-3 mr-1" />}
                 {crossSellStatus}
               </Badge>
@@ -128,46 +174,19 @@ export function ServingPanel({ patient, onUpdate }: Props) {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-end">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
             <StatusSelect
               value={patient.cgmCrossSell}
               config={{ field: "cgmCrossSell", label: "Cross-Sell Status", indexMap: CGM_CROSS_SELL_INDEX }}
               onChange={(v) => onUpdate({ cgmCrossSell: v })}
+              hint={xsellHint ?? undefined}
             />
-
-            {/* If cross-sell eligible, user MUST pick CGM Coverage Path (Insulin or Hypoglycemia) */}
-            {isCrossSellEligible && (
-              <div className="space-y-1.5">
-                <Label className="flex items-center gap-1.5">
-                  CGM Coverage Path
-                  {needsCgmCoveragePath && <span className="text-red-400">* required</span>}
-                </Label>
-                <Select
-                  value={patient.cgmCoveragePath || undefined}
-                  onValueChange={(v) => onUpdate({ cgmCoveragePath: v })}
-                >
-                  <SelectTrigger className={needsCgmCoveragePath ? "border-amber-400" : ""}>
-                    <SelectValue placeholder="Select Insulin or Hypoglycemia…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Insulin">Insulin</SelectItem>
-                    <SelectItem value="Hypoglycemia">Hypoglycemia</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
           </div>
 
           {crossSellStatus === "Evaluate" && !primaryIns && (
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
               Set Primary Insurance on the Stedi tab to auto-evaluate cross-sell eligibility
-            </p>
-          )}
-
-          {crossSellStatus === "Couldn't Cross-Sell" && (
-            <p className="text-xs text-muted-foreground">
-              Medicaid plans are not eligible for CGM cross-sell.
             </p>
           )}
         </CardContent>
@@ -199,6 +218,7 @@ export function ServingPanel({ patient, onUpdate }: Props) {
               value={patient.cgmType}
               config={{ field: "cgmType", label: "CGM Type", indexMap: CGM_TYPE_INDEX }}
               onChange={(v) => onUpdate({ cgmType: v })}
+              hint={isCrossSellEligible ? "All cross-sells default to Dexcom G7" : undefined}
             />
           </div>
         </CardContent>
@@ -216,17 +236,25 @@ export function ServingPanel({ patient, onUpdate }: Props) {
               config={{ field: "insulinPumpCoveragePath", label: "Insulin Pump Coverage Path", indexMap: INSULIN_PUMP_COVERAGE_PATH_INDEX }}
               onChange={(v) => onUpdate({ insulinPumpCoveragePath: v })}
             />
-            {/* Only show CGM Coverage Path here if NOT cross-sell eligible (otherwise it's in section 2) */}
-            {!isCrossSellEligible && (
-              <StatusSelect
-                value={patient.cgmCoveragePath}
-                config={{ field: "cgmCoveragePath", label: "CGM Coverage Path", indexMap: CGM_COVERAGE_PATH_INDEX }}
-                onChange={(v) => onUpdate({ cgmCoveragePath: v })}
-              />
-            )}
+            <StatusSelect
+              value={patient.cgmCoveragePath}
+              config={{ field: "cgmCoveragePath", label: "CGM Coverage Path", indexMap: CGM_COVERAGE_PATH_INDEX }}
+              onChange={(v) => onUpdate({ cgmCoveragePath: v })}
+              hint={isCrossSellEligible ? "All cross-sells are insulin injecting" : undefined}
+            />
           </div>
         </CardContent>
       </Card>
+
+      {/* Next button → Doctor tab */}
+      {onNext && (
+        <div className="flex justify-end pt-2">
+          <Button onClick={onNext} className="gap-2 bg-gradient-primary shadow-elevate">
+            Next: Doctor
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

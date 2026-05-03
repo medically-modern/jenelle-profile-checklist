@@ -19,6 +19,7 @@ const Index = () => {
   const { patients, loading, error, refetch, updateLocal, clearOverlay } = useMondayPatients();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState<"stedi" | "serving" | "doctor">("stedi");
   const [clinicLabels, setClinicLabels] = useState<{ id: number; name: string }[]>([]);
   const [selectedClinicId, setSelectedClinicId] = useState<number | null>(null);
 
@@ -98,6 +99,7 @@ const Index = () => {
           onSelect={(id) => {
             setSelectedId(id);
             setSelectedClinicId(null);
+            setActiveTab("stedi");
           }}
           loading={loading}
           error={error}
@@ -142,7 +144,7 @@ const Index = () => {
                 <>
                   <PatientProfileCard patient={selected} onUpdate={handleUpdate} />
 
-                  <Tabs defaultValue="stedi" className="space-y-5">
+                  <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "stedi" | "serving" | "doctor")} className="space-y-5">
                     <TabsList className="grid w-full max-w-md grid-cols-3 mx-auto">
                       <TabsTrigger value="stedi">1. Stedi</TabsTrigger>
                       <TabsTrigger value="serving">2. Serving</TabsTrigger>
@@ -150,11 +152,20 @@ const Index = () => {
                     </TabsList>
 
                     <TabsContent value="stedi" className="mt-0">
-                      <StediPanel patient={selected} onRefresh={refetch} onUpdate={handleUpdate} />
+                      <StediPanel
+                        patient={selected}
+                        onRefresh={refetch}
+                        onUpdate={handleUpdate}
+                        onNext={() => setActiveTab("serving")}
+                      />
                     </TabsContent>
 
                     <TabsContent value="serving" className="mt-0">
-                      <ServingPanel patient={selected} onUpdate={handleUpdate} />
+                      <ServingPanel
+                        patient={selected}
+                        onUpdate={handleUpdate}
+                        onNext={() => setActiveTab("doctor")}
+                      />
                     </TabsContent>
 
                     <TabsContent value="doctor" className="mt-0 space-y-5">

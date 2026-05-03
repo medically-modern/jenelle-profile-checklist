@@ -85,12 +85,33 @@ export interface Patient {
 }
 
 /**
+ * Cross-sell exclusions:
+ *   - Medicaid plans: not eligible (rule)
+ *   - United plans: business decision — we choose not to cross-sell United patients
+ *   - Cigna: business decision — we choose not to cross-sell Cigna patients
+ */
+export type CrossSellReason =
+  | "no-primary"   // Primary insurance not yet selected
+  | "eligible"     // Allowed → auto Cross-Sell
+  | "medicaid"     // Blocked: Medicaid plan
+  | "united"       // Blocked: United business rule
+  | "cigna";       // Blocked: Cigna business rule
+
+export function crossSellReason(primaryInsurance: string): CrossSellReason {
+  if (!primaryInsurance) return "no-primary";
+  const lower = primaryInsurance.toLowerCase();
+  if (lower.includes("medicaid")) return "medicaid";
+  if (lower.includes("united")) return "united";
+  if (lower.includes("cigna")) return "cigna";
+  return "eligible";
+}
+
+/**
  * Cross-sell logic: determines if we can cross-sell CGM based on primary insurance.
- * Any insurance with "Medicaid" in the name = can't cross-sell.
+ * See crossSellReason() for the categorical reason (used to drive UI explanations).
  */
 export function canCrossSellCgm(primaryInsurance: string): boolean {
-  if (!primaryInsurance) return false;
-  return !primaryInsurance.toLowerCase().includes("medicaid");
+  return crossSellReason(primaryInsurance) === "eligible";
 }
 
 /**

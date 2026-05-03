@@ -13,7 +13,7 @@ import {
   SECONDARY_INSURANCE_INDEX,
 } from "@/lib/mondayMapping";
 import { toast } from "sonner";
-import { Play, Loader2, AlertTriangle, CheckCircle2, Save, CheckCheck } from "lucide-react";
+import { Play, Loader2, AlertTriangle, CheckCircle2, Save, CheckCheck, ArrowRight } from "lucide-react";
 
 // Profile fields that need to be in Monday before Stedi can run.
 // Stedi reads from Monday — local edits must be synced first.
@@ -51,6 +51,7 @@ interface Props {
   patient: Patient;
   onRefresh: () => void;
   onUpdate: (patch: Partial<Patient>) => void;
+  onNext?: () => void;
 }
 
 // Fields always shown after Stedi run
@@ -93,7 +94,7 @@ function ResultRow({ label, value, isError }: { label: string; value: string; is
   );
 }
 
-export function StediPanel({ patient, onRefresh, onUpdate }: Props) {
+export function StediPanel({ patient, onRefresh, onUpdate, onNext }: Props) {
   const [running, setRunning] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
@@ -421,7 +422,8 @@ export function StediPanel({ patient, onRefresh, onUpdate }: Props) {
         </>
       )}
 
-      {/* Step C: Primary + Secondary Insurance */}
+      {/* Step 3: Primary + Secondary Insurance (hidden until Stedi has run) */}
+      {hasStediData && (
       <Card className="shadow-card">
         <CardHeader className="pb-3">
           <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-semibold">Step 3</p>
@@ -465,6 +467,17 @@ export function StediPanel({ patient, onRefresh, onUpdate }: Props) {
           </div>
         </CardContent>
       </Card>
+      )}
+
+      {/* Next button → Serving tab */}
+      {onNext && (
+        <div className="flex justify-end pt-2">
+          <Button onClick={onNext} className="gap-2 bg-gradient-primary shadow-elevate">
+            Next: Serving
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
