@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Patient } from "@/lib/workflow";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,14 +6,46 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { triggerStediRun } from "@/lib/mondayWrite";
+import { triggerStediRun, writePatientProfile, verifyProfileWritten } from "@/lib/mondayWrite";
 import {
   GENERAL_INSURANCE_INDEX,
   PRIMARY_INSURANCE_INDEX,
   SECONDARY_INSURANCE_INDEX,
 } from "@/lib/mondayMapping";
 import { toast } from "sonner";
-import { Play, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Play, Loader2, AlertTriangle, CheckCircle2, Save, CheckCheck } from "lucide-react";
+
+// Profile fields that need to be in Monday before Stedi can run.
+// Stedi reads from Monday — local edits must be synced first.
+type ProfileSnapshot = {
+  name: string;
+  dob: string;
+  ptPhone: string;
+  email: string;
+  gender: string;
+  patientAddress: string;
+  generalInsurance: string;
+  memberId1: string;
+  memberId2: string;
+};
+
+function snapshotProfile(p: Patient): ProfileSnapshot {
+  return {
+    name: p.name,
+    dob: p.dob,
+    ptPhone: p.ptPhone,
+    email: p.email,
+    gender: p.gender,
+    patientAddress: p.patientAddress,
+    generalInsurance: p.generalInsurance,
+    memberId1: p.memberId1,
+    memberId2: p.memberId2,
+  };
+}
+
+function profilesEqual(a: ProfileSnapshot, b: ProfileSnapshot): boolean {
+  return (Object.keys(a) as (keyof ProfileSnapshot)[]).every((k) => a[k] === b[k]);
+}
 
 interface Props {
   patient: Patient;
@@ -63,20 +95,68 @@ function ResultRow({ label, value, isError }: { label: string; value: string; is
 
 export function StediPanel({ patient, onRefresh, onUpdate }: Props) {
   const [running, setRunning] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  // Snapshot of what we believe is currently in Monday for the profile fields.
+  // Updated when (a) we switch patients and (b) Fix Profile sync verifies.
+  const syncedSnapshotRef = useRef<ProfileSnapshot>(snapshotProfile(patient));
+
+  // Reset the snapshot whenever we switch to a different patient — at that
+  // point the patient prop reflects fresh Monday data (overlay-merged), so
+  // there are no pending edits by definition.
+  useEffect(() => {
+    syncedSnapshotRef.current = snapshotProfile(patient);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patient.id]);
 
   const generalIns = patient.generalInsurance;
   const isMedicare = generalIns === "Medicare A&B";
   const isMedicaid = generalIns === "Medicaid";
 
+  // Has the user edited any profile field since the last successful sync?
+  const profileDirty = !profilesEqual(snapshotProfile(patient), syncedSnapshotRef.current);
+
   // Prerequisites for Run Stedi button
-  const canRunStedi = !!(
+  const prereqsFilled = !!(
     patient.name.trim() &&
     patient.dob.trim() &&
     patient.generalInsurance &&
     patient.memberId1.trim()
   );
+  const canRunStedi = prereqsFilled && !profileDirty;
 
   const hasStediData = ALWAYS_FIELDS.some(({ key }) => !!(patient[key] as string));
+
+  const handleFixProfile = async () => {
+    setSyncing(true);
+    try {
+      await writePatientProfile(patient);
+      // Give Monday a beat to commit before we read back
+      await new Promise((r) => setTimeout(r, 1500));
+      const result = await verifyProfileWritten(patient.id, {
+        name: patient.name,
+        dob: patient.dob,
+        generalInsurance: patient.generalInsurance,
+        memberId1: patient.memberId1,
+      });
+      if (result.ok) {
+        // Mark these values as the new "known in Monday" baseline
+        syncedSnapshotRef.current = snapshotProfile(patient);
+        onRefresh();
+        toast.success("Profile saved to Monday — ready to run Stedi");
+      } else {
+        toast.error("Profile didn't fully sync to Monday", {
+          description: result.mismatches.join(" · "),
+        });
+      }
+    } catch (e) {
+      toast.error("Failed to save profile to Monday", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleRunStedi = async () => {
     setRunning(true);
@@ -144,8 +224,28 @@ export function StediPanel({ patient, onRefresh, onUpdate }: Props) {
             </div>
           </div>
 
-          {/* Run Stedi Button */}
-          <div className="flex items-center gap-4">
+          {/* Fix Profile + Run Stedi buttons */}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              onClick={handleFixProfile}
+              disabled={syncing || !profileDirty}
+              variant="outline"
+              className="gap-2"
+            >
+              {syncing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : profileDirty ? (
+                <Save className="h-4 w-4" />
+              ) : (
+                <CheckCheck className="h-4 w-4 text-green-600" />
+              )}
+              {syncing
+                ? "Saving…"
+                : profileDirty
+                ? "Fix Profile Before Stedi Check"
+                : "Profile Synced"}
+            </Button>
+
             <Button
               onClick={handleRunStedi}
               disabled={running || !canRunStedi}
@@ -154,7 +254,14 @@ export function StediPanel({ patient, onRefresh, onUpdate }: Props) {
               {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               {running ? "Running…" : "Run Stedi Check"}
             </Button>
-            {!canRunStedi && (
+
+            {profileDirty && (
+              <p className="text-xs text-amber-600 flex items-center gap-1">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Save profile changes before running Stedi
+              </p>
+            )}
+            {!profileDirty && !prereqsFilled && (
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                 Fill in Name, DOB, General Insurance, and Member ID 1 first

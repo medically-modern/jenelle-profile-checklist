@@ -324,3 +324,21 @@ export async function createClinicLabel(name: string): Promise<number> {
   // We'll handle this in mondayWrite by writing the label text directly.
   return newId;
 }
+
+/** Fetch a single item's column values. Used for verifying writes. */
+export async function fetchItem(itemId: string, columnIds: string[]): Promise<MondayItem | null> {
+  const query = `
+    query ($itemIds: [ID!], $cols: [String!]) {
+      items(ids: $itemIds) {
+        id
+        name
+        column_values(ids: $cols) { id text value }
+      }
+    }
+  `;
+  const data = await gql<{ items: MondayItem[] }>(query, {
+    itemIds: [itemId],
+    cols: columnIds,
+  });
+  return data.items?.[0] ?? null;
+}
