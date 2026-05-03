@@ -157,7 +157,7 @@ const Index = () => {
                       <ServingPanel patient={selected} onUpdate={handleUpdate} />
                     </TabsContent>
 
-                    <TabsContent value="doctor" className="mt-0">
+                    <TabsContent value="doctor" className="mt-0 space-y-5">
                       <DoctorPanel
                         patient={selected}
                         onUpdate={handleUpdate}
@@ -165,37 +165,37 @@ const Index = () => {
                         onClinicSelect={handleClinicSelect}
                         onClinicCreate={handleClinicCreate}
                       />
+
+                      {/* Submit Buttons — Doctor tab only */}
+                      <div className="rounded-xl bg-card border shadow-card p-5">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                          <div className="text-sm text-muted-foreground">
+                            <p className="font-medium text-foreground">Ready to send off?</p>
+                            <p className="text-xs">All edits will be saved to Monday when you submit.</p>
+                          </div>
+                          <div className="flex gap-3">
+                            <Button
+                              variant="outline"
+                              onClick={() => handleSubmit("needsInfo")}
+                              disabled={submitting}
+                              className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+                            >
+                              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+                              Need More Info
+                            </Button>
+                            <Button
+                              onClick={() => handleSubmit("advance")}
+                              disabled={submitting}
+                              className="gap-2 bg-green-600 hover:bg-green-700 text-white shadow-elevate"
+                            >
+                              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                              Advance to MN
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
                     </TabsContent>
                   </Tabs>
-
-                  {/* Submit Buttons */}
-                  <div className="rounded-xl bg-card border shadow-card p-5">
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                      <div className="text-sm text-muted-foreground">
-                        <p className="font-medium text-foreground">Ready to send off?</p>
-                        <p className="text-xs">All edits will be saved to Monday when you submit.</p>
-                      </div>
-                      <div className="flex gap-3">
-                        <Button
-                          variant="outline"
-                          onClick={() => handleSubmit("needsInfo")}
-                          disabled={submitting}
-                          className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
-                        >
-                          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
-                          Need More Info
-                        </Button>
-                        <Button
-                          onClick={() => handleSubmit("advance")}
-                          disabled={submitting}
-                          className="gap-2 bg-green-600 hover:bg-green-700 text-white shadow-elevate"
-                        >
-                          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                          Advance to MN
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
                 </>
               )}
             </section>

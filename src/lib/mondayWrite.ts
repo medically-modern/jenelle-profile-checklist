@@ -7,6 +7,7 @@ import {
   writeLocation, writeItemName, writeDropdownIds, COL,
 } from "./mondayApi";
 import type { Patient } from "./workflow";
+import { phoneDigits } from "./workflow";
 import {
   PRIMARY_INSURANCE_INDEX, GENERAL_INSURANCE_INDEX, SECONDARY_INSURANCE_INDEX,
   DOCTOR_STATUS_INDEX, CLINICALS_METHOD_INDEX, REFERRAL_TYPE_INDEX,
@@ -48,7 +49,7 @@ export async function sendPatientToMonday(
 
   // ── Demographics ──
   tasks.push(writeText(p.id, COL.dob, p.dob));
-  if (p.ptPhone) tasks.push(writePhone(p.id, COL.ptPhone, p.ptPhone));
+  if (p.ptPhone) tasks.push(writePhone(p.id, COL.ptPhone, phoneDigits(p.ptPhone)));
   if (p.email) tasks.push(writeText(p.id, COL.email, p.email));
   tasks.push(statusTask(p.id, COL.gender, p.gender, GENDER_INDEX));
   if (p.patientAddress) tasks.push(writeLocation(p.id, COL.patientAddress, p.patientAddress));
@@ -61,16 +62,22 @@ export async function sendPatientToMonday(
   if (p.memberId2) tasks.push(writeText(p.id, COL.memberId2, p.memberId2));
 
   // ── Working cost-sharing (numeric) ──
-  if (p.workingCoinsurance) tasks.push(writeNumber(p.id, COL.workingCoinsurance, p.workingCoinsurance));
-  if (p.workingDeductible) tasks.push(writeNumber(p.id, COL.workingDeductible, p.workingDeductible));
-  if (p.workingDeductibleRemaining) tasks.push(writeNumber(p.id, COL.workingDeductibleRemaining, p.workingDeductibleRemaining));
-  if (p.workingOopMax) tasks.push(writeNumber(p.id, COL.workingOopMax, p.workingOopMax));
-  if (p.workingOopMaxRemaining) tasks.push(writeNumber(p.id, COL.workingOopMaxRemaining, p.workingOopMaxRemaining));
+  // Working cost-sharing: fall back to stedi individual values if user hasn't edited
+  const wCoins = p.workingCoinsurance || p.stediCoinsurance;
+  const wDeduct = p.workingDeductible || p.stediIndividualDeductible;
+  const wDeductRem = p.workingDeductibleRemaining || p.stediIndividualDeductibleRemaining;
+  const wOop = p.workingOopMax || p.stediIndividualOopMax;
+  const wOopRem = p.workingOopMaxRemaining || p.stediIndividualOopMaxRemaining;
+  if (wCoins) tasks.push(writeNumber(p.id, COL.workingCoinsurance, wCoins));
+  if (wDeduct) tasks.push(writeNumber(p.id, COL.workingDeductible, wDeduct));
+  if (wDeductRem) tasks.push(writeNumber(p.id, COL.workingDeductibleRemaining, wDeductRem));
+  if (wOop) tasks.push(writeNumber(p.id, COL.workingOopMax, wOop));
+  if (wOopRem) tasks.push(writeNumber(p.id, COL.workingOopMaxRemaining, wOopRem));
 
   // ── Doctor ──
   tasks.push(statusTask(p.id, COL.doctorStatus, p.doctorStatus, DOCTOR_STATUS_INDEX));
   if (p.doctorName) tasks.push(writeText(p.id, COL.doctorName, p.doctorName));
-  if (p.doctorPhone) tasks.push(writePhone(p.id, COL.doctorPhone, p.doctorPhone));
+  if (p.doctorPhone) tasks.push(writePhone(p.id, COL.doctorPhone, phoneDigits(p.doctorPhone)));
   if (p.doctorNpi) tasks.push(writeText(p.id, COL.doctorNpi, p.doctorNpi));
   tasks.push(statusTask(p.id, COL.clinicalsMethod, p.clinicalsMethod, CLINICALS_METHOD_INDEX));
   if (p.doctorEmail) tasks.push(writeEmail(p.id, COL.doctorEmail, p.doctorEmail));
