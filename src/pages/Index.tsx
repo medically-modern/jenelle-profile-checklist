@@ -189,7 +189,7 @@ const Index = () => {
                               variant="outline"
                               onClick={() => handleSubmit("needsInfo")}
                               disabled={submitting}
-                              className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+                              className="gap-2 border-blue-300 text-blue-700 hover:bg-purple-100 hover:text-blue-700"
                             >
                               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
                               Need More Info
