@@ -111,19 +111,53 @@ async function loadGooglePlaces(): Promise<void> {
   }
 }
 
-/** Geocode an address string to lat/lng using the Maps Geocoder */
-async function geocodeAddress(address: string): Promise<{ lat: number; lng: number }> {
+/**
+ * Geocode an address string. Returns lat/lng AND the full address with zip
+ * guaranteed (built from address_components).
+ */
+async function geocodeAndBuild(rawAddr: string): Promise<{
+  address: string;
+  lat: number;
+  lng: number;
+}> {
   try {
     const geocoder = new google.maps.Geocoder();
-    const result = await geocoder.geocode({ address });
-    if (result.results?.[0]?.geometry?.location) {
-      const loc = result.results[0].geometry.location;
-      return { lat: loc.lat(), lng: loc.lng() };
-    }
+    const result = await geocoder.geocode({ address: rawAddr });
+    const top = result.results?.[0];
+    if (!top) return { address: rawAddr, lat: 0, lng: 0 };
+
+    const loc = top.geometry?.location;
+    const lat = loc ? loc.lat() : 0;
+    const lng = loc ? loc.lng() : 0;
+
+    // Build address from components so zip is always included
+    const comps = top.address_components || [];
+    const get = (type: string, short = false): string => {
+      const c = comps.find((comp: any) => comp.types?.includes(type));
+      if (!c) return "";
+      return short ? (c.short_name || "") : (c.long_name || "");
+    };
+
+    const streetNumber = get("street_number");
+    const route = get("route");
+    const city =
+      get("locality") ||
+      get("sublocality_level_1") ||
+      get("administrative_area_level_3");
+    const state = get("administrative_area_level_1", true);
+    const zip = get("postal_code");
+
+    const street = [streetNumber, route].filter(Boolean).join(" ");
+    const stateZip = [state, zip].filter(Boolean).join(" ");
+    const built = [street, city, stateZip].filter(Boolean).join(", ");
+
+    // Use the built address if we got meaningful components, else fall back
+    const address = built || rawAddr;
+    return { address, lat, lng };
   } catch (err) {
     console.warn("Geocoding failed:", err);
+    return { address: rawAddr, lat: 0, lng: 0 };
   }
-  return { lat: 0, lng: 0 };
 }
 
 /** Try to reach the <input> inside the web component's shadow DOM */
@@ -187,15 +221,19 @@ export function AddressAutocomplete({ value, onChange, placeholder, className }:
       for (const evtName of ["gmp-placeselect", "gmp-select"]) {
         pac.addEventListener(evtName, () => {
           setTimeout(async () => {
-            let addr = (pac as any).value || "";
-            if (!addr) return;
-            addr = stripZipPlus4(addr);
-            // Sync the cleaned value back into the input
+            const rawAddr = (pac as any).value || "";
+            if (!rawAddr) return;
+
+            // Geocode to get lat/lng + build address with guaranteed zip
+            const result = await geocodeAndBuild(rawAddr);
+            const addr = stripZipPlus4(result.address);
+
+            // Sync the full address (with zip) back into the input
             const inp = getShadowInput(pac);
             if (inp && inp.value !== addr) inp.value = addr;
-            const coords = await geocodeAddress(addr);
+
             lastEmittedRef.current = addr;
-            onChangeRef.current({ address: addr, lat: coords.lat, lng: coords.lng });
+            onChangeRef.current({ address: addr, lat: result.lat, lng: result.lng });
           }, 50);
         });
       }
@@ -208,7 +246,6 @@ export function AddressAutocomplete({ value, onChange, placeholder, className }:
         if (current !== inp.value) inp.value = current;
         if (current && current !== lastEmittedRef.current) {
           lastEmittedRef.current = current;
-          // No lat/lng available for manual edits — send 0/0
           onChangeRef.current({ address: current, lat: 0, lng: 0 });
         }
       };
@@ -220,14 +257,12 @@ export function AddressAutocomplete({ value, onChange, placeholder, className }:
       const initShadow = () => {
         const shadow = pac.shadowRoot;
         if (!shadow) return;
-        // Inject dark-text styles
         const s = document.createElement("style");
         s.textContent = `
           input { background: white !important; color: #111 !important; }
           * { color: #111 !important; }
         `;
         shadow.appendChild(s);
-        // Set initial value
         const inp = shadow.querySelector("input");
         if (inp) {
           if (value) inp.value = value;
